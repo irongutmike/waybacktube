@@ -1,0 +1,12 @@
+{
+  "name": "youtube-time-machine-build",
+  "version": "1.0.0",
+  "description": "Build system for YouTube Time Machine userscript",
+  "main": "build-script.js",
+  "scripts": {
+    "build": "node build-script.js"
+  },
+  "keywords": ["youtube", "userscript", "time-machine"],
+  "author": "Your Name",
+  "license": "MIT"
+}
