@@ -187,7 +187,7 @@ class MainClassGenerator {
         handleHomePage() {
             this.log('Handling homepage');
             if (this.settings.active) {
-                // Aggressively nuke homepage content
+                // Aggressively nuke homepage content (only on actual homepage)
                 this.shortsBlocker.nukeHomepage();
                 
                 // Set up auto-loading if enabled
@@ -202,7 +202,13 @@ class MainClassGenerator {
         handleSearchPage() {
             this.log('Handling search page');
             if (this.settings.active) {
+                // Don't nuke search results - only set up interception
                 this.searchInterceptor.setupSearchInterception();
+                
+                // Only block shorts in search results, not all content
+                setTimeout(() => {
+                    this.shortsBlocker.blockShorts();
+                }, 100);
             }
         }
 

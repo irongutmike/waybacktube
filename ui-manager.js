@@ -565,6 +565,7 @@ class UIManager {
             }
 
             /* ULTRA-AGGRESSIVE homepage nuking */
+            /* Only apply to actual homepage */
             ytd-browse[page-subtype="home"] ytd-video-renderer:not(.tm-approved),
             ytd-browse[page-subtype="home"] ytd-grid-video-renderer:not(.tm-approved),
             ytd-browse[page-subtype="home"] ytd-rich-item-renderer:not(.tm-approved),
@@ -577,8 +578,24 @@ class UIManager {
             ytd-browse[page-subtype="home"] ytd-continuation-item-renderer:not(.tm-approved),
             ytd-browse[page-subtype="home"] ytd-rich-grid-renderer #contents > *:not(.tm-homepage):not(.tm-approved),
             ytd-browse[page-subtype="home"] #contents > *:not(.tm-homepage):not(.tm-approved),
-            ytd-browse[page-subtype="home"] ytd-thumbnail:not(.tm-approved),
-            ytd-browse[page-subtype="home"] [href*="/watch?v="]:not(.tm-approved) {
+            ytd-browse[page-subtype="home"] ytd-thumbnail:not(.tm-approved) {
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                height: 0 !important;
+                width: 0 !important;
+                max-height: 0 !important;
+                max-width: 0 !important;
+                overflow: hidden !important;
+                position: absolute !important;
+                left: -9999px !important;
+                top: -9999px !important;
+                z-index: -9999 !important;
+                pointer-events: none !important;
+            }
+            
+            /* Separate rule for video links to avoid affecting search results */
+            ytd-browse[page-subtype="home"] [href*="/watch?v="]:not(.tm-approved):not([data-context-menu-target]) {
                 display: none !important;
                 visibility: hidden !important;
                 opacity: 0 !important;

@@ -32,6 +32,11 @@ class ShortsBlocker {
     }
     
     nukeHomepage() {
+        // Only nuke if we're actually on the homepage
+        if (window.location.pathname !== '/') {
+            return;
+        }
+        
         // ULTRA-AGGRESSIVELY hide ALL video content on homepage while loading
         const homepageSelectors = [
             // Primary content containers
