@@ -1,6 +1,6 @@
-const FileProcessor = require('./build/file-processor');
-const UserscriptHeader = require('./build/userscript-header');
-const MainClassGenerator = require('./build/main-class-generator');
+const FileProcessor = require('./file-processor');
+const UserscriptHeader = require('./userscript-header');
+const MainClassGenerator = require('./main-class-generator');
 
 class BuildScript {
     constructor() {
