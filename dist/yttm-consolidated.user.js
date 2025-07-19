@@ -1,28 +1,29 @@
 // ==UserScript==
-// @name         YouTube Time Machine - Consolidated
+// @name         WayBackTube 
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
-// @description  Travel back in time on YouTube - modular build
-// @author       Time Traveler
+// @license MIT
+// @version      25
+// @description  Travel back in time on YouTube; simulate what it was like in any date.
+// @author       You
 // @match        https://www.youtube.com/*
-// @match        https://youtube.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_listValues
+// @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
-// @grant        unsafeWindow
+// @connect      youtube.com
+// @connect      googleapis.com
 // @run-at       document-start
+// @downloadURL https://update.greasyfork.org/scripts/542809/WayBackTube.user.js
+// @updateURL https://update.greasyfork.org/scripts/542809/WayBackTube.meta.js
 // ==/UserScript==
 
 (function() {
     'use strict';
-    
-    console.log('[YouTube Time Machine] Starting consolidated userscript...');
 
-// ===== MODULE CONTENTS =====
 
-// ===== CONFIG.JS =====
+    // === CONFIG ===
 // Configuration settings for YouTube Time Machine
 const CONFIG = {
     updateInterval: 50,
@@ -104,19 +105,19 @@ const CONFIG = {
         '#contents ytd-video-renderer',
         '#contents ytd-grid-video-renderer',
         '#contents ytd-rich-item-renderer',
-        
+
         // Channel sections and shelves
         'ytd-browse[page-subtype="channel"] ytd-shelf-renderer',
         'ytd-browse[page-subtype="channel"] ytd-rich-shelf-renderer',
         'ytd-browse[page-subtype="channel"] ytd-item-section-renderer',
         'ytd-browse[page-subtype="channel"] ytd-section-list-renderer',
         'ytd-browse[page-subtype="channel"] ytd-horizontal-card-list-renderer',
-        
+
         // Channel playlists and sections
         'ytd-browse[page-subtype="channel"] ytd-playlist-renderer',
         'ytd-browse[page-subtype="channel"] ytd-compact-playlist-renderer',
         'ytd-browse[page-subtype="channel"] ytd-grid-playlist-renderer',
-        
+
         // For You, Popular Uploads, etc sections
         '#contents ytd-shelf-renderer',
         '#contents ytd-rich-shelf-renderer',
@@ -126,18 +127,18 @@ const CONFIG = {
         '#contents ytd-playlist-renderer',
         '#contents ytd-compact-playlist-renderer',
         '#contents ytd-grid-playlist-renderer',
-        
+
         // Channel content containers
         'ytd-browse[page-subtype="channel"] #contents > *',
         'ytd-browse[page-subtype="channel"] #primary-inner > *:not(ytd-c4-tabbed-header-renderer)',
-        
+
         // Specific section types
         '[data-target-id="browse-feed-tab"]',
         'ytd-browse[page-subtype="channel"] ytd-browse-feed-actions-renderer'
     ]
 };
 
-// ===== API-MANAGER.JS =====
+    // === API-MANAGER ===
 // API Manager with unlimited rotation
 class APIManager {
     constructor() {
@@ -428,12 +429,12 @@ class APIManager {
     async getViralVideos(maxDate, forceRefresh = false) {
         const dateKey = maxDate.toISOString().split('T')[0];
         const cacheKey = 'viral_videos_' + dateKey;
-        
+
         let viralVideos = this.getCache(cacheKey, forceRefresh);
-        
+
         if (!viralVideos) {
             this.log('Fetching viral videos for ' + dateKey + '...');
-            
+
             const viralQueries = [
                 'viral meme',
                 'funny viral video',
@@ -451,26 +452,26 @@ class APIManager {
                 'internet famous',
                 'viral sensation'
             ];
-            
+
             const endDate = new Date(maxDate);
             endDate.setHours(23, 59, 59, 999);
-            
+
             const startDate = new Date(maxDate);
             startDate.setFullYear(startDate.getFullYear() - 2); // 2 years before target date
-            
+
             viralVideos = [];
-            
+
             // Fetch from multiple viral queries
             for (let i = 0; i < Math.min(viralQueries.length, 8); i++) {
                 try {
                     const queryIndex = Math.floor(Math.random() * viralQueries.length);
                     const query = viralQueries[queryIndex];
-                    
+
                     if (!query || query.trim() === '') {
                         this.log('Skipping empty query at index ' + queryIndex);
                         continue;
                     }
-                    
+
                     const response = await this.makeRequest(this.baseUrl + '/search', {
                         part: 'snippet',
                         q: query,
@@ -481,16 +482,16 @@ class APIManager {
                         maxResults: 5,
                         videoDuration: 'short' // Prefer shorter viral content
                     });
-                    
+
                     if (response.items) {
                         const videos = response.items.map(item => ({
                             id: item.id.videoId,
                             title: item.snippet.title,
                             channel: item.snippet.channelTitle,
                             channelId: item.snippet.channelId,
-                            thumbnail: item.snippet.thumbnails && item.snippet.thumbnails.medium ? 
-                                item.snippet.thumbnails.medium.url : 
-                                (item.snippet.thumbnails && item.snippet.thumbnails.default ? 
+                            thumbnail: item.snippet.thumbnails && item.snippet.thumbnails.medium ?
+                                item.snippet.thumbnails.medium.url :
+                                (item.snippet.thumbnails && item.snippet.thumbnails.default ?
                                     item.snippet.thumbnails.default.url : ''),
                             publishedAt: item.snippet.publishedAt,
                             description: item.snippet.description || '',
@@ -498,40 +499,40 @@ class APIManager {
                             relativeDate: this.formatRelativeDate(item.snippet.publishedAt, endDate),
                             isViral: true
                         }));
-                        
+
                         viralVideos.push.apply(viralVideos, videos);
                     }
-                    
+
                     // Small delay between requests
                     await new Promise(resolve => setTimeout(resolve, 300));
-                    
+
                 } catch (error) {
                     this.log('Failed to fetch viral videos for query "' + (query || 'undefined') + '":', error);
                 }
             }
-            
+
             // Remove duplicates and shuffle
-            const uniqueVideos = viralVideos.filter((video, index, self) => 
+            const uniqueVideos = viralVideos.filter((video, index, self) =>
                 index === self.findIndex(v => v.id === video.id)
             );
-            
+
             viralVideos = this.shuffleArray(uniqueVideos).slice(0, CONFIG.viralVideosCount);
-            
+
             this.setCache(cacheKey, viralVideos, forceRefresh);
             this.log('Cached ' + viralVideos.length + ' viral videos for ' + dateKey);
         }
-        
+
         return viralVideos || [];
     }
-    
+
     generateViralViewCount(publishedAt, referenceDate) {
         const videoDate = new Date(publishedAt);
         const refDate = new Date(referenceDate);
         const daysSinceUpload = Math.floor((refDate - videoDate) / (1000 * 60 * 60 * 24));
-        
+
         // Viral videos should have higher view counts
         let minViews, maxViews;
-        
+
         if (daysSinceUpload <= 7) {
             minViews = 100000;
             maxViews = 5000000;
@@ -545,17 +546,17 @@ class APIManager {
             minViews = 2000000;
             maxViews = 100000000;
         }
-        
+
         const multiplier = Math.random() * 0.8 + 0.2;
         const viewCount = Math.floor(minViews + (maxViews - minViews) * multiplier);
-        
+
         return this.formatViewCount(viewCount);
     }
-    
+
     async getChannelVideosForPage(channelId, channelName, endDate, startDate = null) {
         const cacheKey = 'channel_page_videos_' + channelId + '_' + endDate.toISOString().split('T')[0] + '_' + (startDate ? startDate.toISOString().split('T')[0] : 'latest');
         let videos = this.getCache(cacheKey);
-        
+
         if (!videos) {
             try {
                 const params = {
@@ -566,28 +567,28 @@ class APIManager {
                     publishedBefore: endDate.toISOString(),
                     maxResults: CONFIG.channelPageVideosPerMonth
                 };
-                
+
                 if (startDate) {
                     params.publishedAfter = startDate.toISOString();
                 }
-                
+
                 const response = await this.makeRequest(this.baseUrl + '/search', params);
-                
+
                 videos = response.items ? response.items.map(item => ({
                     id: item.id.videoId,
                     title: item.snippet.title,
                     channel: item.snippet.channelTitle || channelName,
                     channelId: item.snippet.channelId,
-                    thumbnail: item.snippet.thumbnails && item.snippet.thumbnails.medium ? 
-                        item.snippet.thumbnails.medium.url : 
-                        (item.snippet.thumbnails && item.snippet.thumbnails.default ? 
+                    thumbnail: item.snippet.thumbnails && item.snippet.thumbnails.medium ?
+                        item.snippet.thumbnails.medium.url :
+                        (item.snippet.thumbnails && item.snippet.thumbnails.default ?
                             item.snippet.thumbnails.default.url : ''),
                     publishedAt: item.snippet.publishedAt,
                     description: item.snippet.description || '',
                     viewCount: this.generateRealisticViewCount(item.snippet.publishedAt, endDate),
                     relativeDate: this.formatRelativeDate(item.snippet.publishedAt, endDate)
                 })) : [];
-                
+
                 this.setCache(cacheKey, videos);
                 this.stats.apiCalls++;
             } catch (error) {
@@ -597,17 +598,17 @@ class APIManager {
         } else {
             this.stats.cacheHits++;
         }
-        
+
         return videos;
     }
-    
+
     generateRealisticViewCount(publishedAt, referenceDate) {
         const videoDate = new Date(publishedAt);
         const refDate = new Date(referenceDate);
         const daysSinceUpload = Math.floor((refDate - videoDate) / (1000 * 60 * 60 * 24));
-        
+
         let minViews, maxViews;
-        
+
         if (daysSinceUpload <= 1) {
             minViews = 50;
             maxViews = 10000;
@@ -624,19 +625,19 @@ class APIManager {
             minViews = 10000;
             maxViews = 10000000;
         }
-        
+
         const multiplier = Math.random() * 0.8 + 0.2;
         const viewCount = Math.floor(minViews + (maxViews - minViews) * multiplier);
-        
+
         return this.formatViewCount(viewCount);
     }
-    
+
     formatRelativeDate(publishedAt, referenceDate) {
         const videoDate = new Date(publishedAt);
         const refDate = new Date(referenceDate);
         const diffMs = refDate - videoDate;
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        
+
         if (diffDays === 0) {
             const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
             if (diffHours === 0) {
@@ -659,7 +660,7 @@ class APIManager {
             return years === 1 ? '1 year ago' : years + ' years ago';
         }
     }
-    
+
     formatViewCount(count) {
         if (count >= 1000000) {
             return (count / 1000000).toFixed(1).replace('.0', '') + 'M';
@@ -668,7 +669,7 @@ class APIManager {
         }
         return count.toLocaleString();
     }
-    
+
     shuffleArray(array) {
         const shuffled = array.slice();
         for (let i = shuffled.length - 1; i > 0; i--) {
@@ -679,7 +680,7 @@ class APIManager {
         }
         return shuffled;
     }
-    
+
     async searchVideos(query, maxResults = 10, endDate = null) {
         try {
             const params = {
@@ -689,28 +690,28 @@ class APIManager {
                 order: 'relevance',
                 maxResults: maxResults
             };
-            
+
             if (endDate) {
                 params.publishedBefore = endDate.toISOString();
             }
-            
+
             const response = await this.makeRequest(this.baseUrl + '/search', params);
-            
+
             return response.items ? response.items.map(item => ({
                 id: item.id.videoId,
                 title: item.snippet.title,
                 channel: item.snippet.channelTitle,
                 channelId: item.snippet.channelId,
-                thumbnail: item.snippet.thumbnails && item.snippet.thumbnails.medium ? 
-                    item.snippet.thumbnails.medium.url : 
-                    (item.snippet.thumbnails && item.snippet.thumbnails.default ? 
+                thumbnail: item.snippet.thumbnails && item.snippet.thumbnails.medium ?
+                    item.snippet.thumbnails.medium.url :
+                    (item.snippet.thumbnails && item.snippet.thumbnails.default ?
                         item.snippet.thumbnails.default.url : ''),
                 publishedAt: item.snippet.publishedAt,
                 description: item.snippet.description || '',
                 viewCount: this.generateRealisticViewCount(item.snippet.publishedAt, endDate || new Date()),
                 relativeDate: this.formatRelativeDate(item.snippet.publishedAt, endDate || new Date())
             })) : [];
-            
+
         } catch (error) {
             this.log('Search failed for query "' + query + '":', error);
             return [];
@@ -719,7 +720,7 @@ class APIManager {
 
     getCache(key, forceRefresh = false) {
         if (forceRefresh) return null;
-        
+
         const cached = GM_getValue('cache_' + key, null);
         if (cached) {
             try {
@@ -759,7 +760,7 @@ class APIManager {
 
     async getRealWorldDateFromAPI() {
         this.log('Getting real world date from YouTube API...');
-        
+
         if (this.keys.length === 0) {
             this.log('No API keys available, falling back to system time');
             return new Date();
@@ -805,11 +806,11 @@ class APIManager {
 
             // Extract date from response headers
             let serverDate = null;
-            
+
             // Try to get date from response headers
             if (response.responseHeaders) {
                 const headers = response.responseHeaders.toLowerCase();
-                
+
                 // Look for Date header
                 const dateMatch = headers.match(/date:\s*([^\r\n]+)/i);
                 if (dateMatch) {
@@ -858,7 +859,7 @@ class APIManager {
     }
 }
 
-// ===== SUBSCRIPTION-MANAGER.JS =====
+    // === SUBSCRIPTION-MANAGER ===
 // Subscription Manager
 class SubscriptionManager {
     constructor() {
@@ -906,7 +907,7 @@ class SubscriptionManager {
     }
 }
 
-// ===== RECOMMENDATION-ENGINE.JS =====
+    // === RECOMMENDATION-ENGINE ===
 // Enhanced Recommendation Engine
 class RecommendationEngine {
     constructor(apiManager) {
@@ -1003,15 +1004,15 @@ class RecommendationEngine {
         const validVideos = allVideos.filter(video =>
             new Date(video.publishedAt) <= maxDate
         );
-        
+
         const validFreshVideos = freshVideos.filter(video =>
             new Date(video.publishedAt) <= maxDate
         );
-        
+
         const validSeriesVideos = seriesVideos.filter(video =>
             new Date(video.publishedAt) <= maxDate && video.title !== currentVideoTitle
         );
-        
+
         console.log('[RecommendationEngine] Valid videos after date filter: ' + validVideos.length);
         console.log('[RecommendationEngine] Valid fresh videos after date filter: ' + validFreshVideos.length);
         console.log('[RecommendationEngine] Valid series videos after date filter: ' + validSeriesVideos.length);
@@ -1031,11 +1032,11 @@ class RecommendationEngine {
         const freshVideosToUse = Math.min(CONFIG.FRESH_VIDEOS_COUNT, validFreshVideos.length);
         const keywordFreshCount = Math.floor(freshVideosToUse * CONFIG.KEYWORD_MATCH_RATIO);
         const regularFreshCount = freshVideosToUse - keywordFreshCount;
-        
+
         const remainingSlots = CONFIG.RECOMMENDATION_COUNT - freshVideosToUse;
         const sameChannelCount = Math.floor(remainingSlots * CONFIG.SAME_CHANNEL_RATIO);
         const otherChannelsCount = remainingSlots - sameChannelCount;
-        
+
         console.log('[RecommendationEngine] Distribution - Fresh: ' + freshVideosToUse + ' (' + keywordFreshCount + ' keyword, ' + regularFreshCount + ' regular), Same channel: ' + sameChannelCount + ', Other channels: ' + otherChannelsCount);
 
         const baseRecommendations = [];
@@ -1049,7 +1050,7 @@ class RecommendationEngine {
 
         // Priority 2: Other fresh videos from current channel
         if (regularFreshCount > 0) {
-            const nonKeywordFreshVideos = validFreshVideos.filter(v => 
+            const nonKeywordFreshVideos = validFreshVideos.filter(v =>
                 baseRecommendations.indexOf(v) === -1 && v.title !== currentVideoTitle
             );
             baseRecommendations.push.apply(baseRecommendations, this.shuffleArray(nonKeywordFreshVideos).slice(0, regularFreshCount));
@@ -1059,7 +1060,7 @@ class RecommendationEngine {
         // Priority 3: Cached videos from same channel
         if (sameChannelCount > 0) {
             const nonKeywordVideos = currentChannelVideos.filter(v =>
-                baseRecommendations.indexOf(v) === -1 && 
+                baseRecommendations.indexOf(v) === -1 &&
                 !validFreshVideos.some(fv => fv.id === v.id)
             );
             baseRecommendations.push.apply(baseRecommendations, this.shuffleArray(nonKeywordVideos).slice(0, sameChannelCount));
@@ -1075,7 +1076,7 @@ class RecommendationEngine {
         // Fill remaining slots if needed
         const allAvailableVideos = validVideos.concat(validFreshVideos).concat(validSeriesVideos);
         while (baseRecommendations.length < CONFIG.RECOMMENDATION_COUNT && allAvailableVideos.length > 0) {
-            const remaining = allAvailableVideos.filter(v => 
+            const remaining = allAvailableVideos.filter(v =>
                 baseRecommendations.indexOf(v) === -1 && v.title !== currentVideoTitle
             );
             if (remaining.length === 0) break;
@@ -1084,7 +1085,7 @@ class RecommendationEngine {
 
         // Now intersperse series videos randomly into the base recommendations
         const finalRecommendations = this.intersperseSeriesVideos(baseRecommendations, validSeriesVideos);
-        
+
         console.log('[RecommendationEngine] Final recommendations count: ' + finalRecommendations.length);
         return finalRecommendations.slice(0, CONFIG.RECOMMENDATION_COUNT);
     }
@@ -1096,16 +1097,16 @@ class RecommendationEngine {
 
         const maxSeriesToUse = Math.min(CONFIG.seriesMatchVideosCount || 3, seriesVideos.length);
         const seriesToUse = this.shuffleArray(seriesVideos).slice(0, maxSeriesToUse);
-        
+
         console.log('[RecommendationEngine] Interspersing ' + seriesToUse.length + ' series videos randomly');
 
         // Create a copy of base recommendations
         const result = baseRecommendations.slice();
-        
+
         // Generate random positions to insert series videos
         const positions = [];
         const maxPosition = Math.min(result.length, CONFIG.RECOMMENDATION_COUNT - seriesToUse.length);
-        
+
         for (let i = 0; i < seriesToUse.length; i++) {
             let position;
             do {
@@ -1113,15 +1114,15 @@ class RecommendationEngine {
             } while (positions.includes(position));
             positions.push(position);
         }
-        
+
         // Sort positions in descending order to insert from back to front
         positions.sort((a, b) => b - a);
-        
+
         // Insert series videos at random positions
         positions.forEach((position, index) => {
             result.splice(position, 0, seriesToUse[index]);
         });
-        
+
         console.log('[RecommendationEngine] Inserted series videos at positions:', positions.reverse());
         return result;
     }
@@ -1147,7 +1148,7 @@ class RecommendationEngine {
     }
 }
 
-// ===== SHORTS-BLOCKER.JS =====
+    // === SHORTS-BLOCKER ===
 // Comprehensive Shorts Blocker
 class ShortsBlocker {
     constructor() {
@@ -1180,62 +1181,57 @@ class ShortsBlocker {
         this.blockModernContent();
         this.blockChannelPages();
     }
-    
+
     nukeHomepage() {
-        // Only nuke if we're actually on the homepage
-        if (window.location.pathname !== '/') {
-            return;
-        }
-        
         // ULTRA-AGGRESSIVELY hide ALL video content on homepage while loading
         const homepageSelectors = [
             // Primary content containers
             'ytd-browse[page-subtype="home"] ytd-video-renderer',
-            'ytd-browse[page-subtype="home"] ytd-grid-video-renderer', 
+            'ytd-browse[page-subtype="home"] ytd-grid-video-renderer',
             'ytd-browse[page-subtype="home"] ytd-rich-item-renderer',
             'ytd-browse[page-subtype="home"] ytd-compact-video-renderer',
             'ytd-browse[page-subtype="home"] ytd-movie-renderer',
             'ytd-browse[page-subtype="home"] ytd-playlist-renderer',
-            
+
             // Shelf and section containers
             'ytd-browse[page-subtype="home"] ytd-rich-shelf-renderer',
             'ytd-browse[page-subtype="home"] ytd-shelf-renderer',
             'ytd-browse[page-subtype="home"] ytd-horizontal-card-list-renderer',
             'ytd-browse[page-subtype="home"] ytd-expanded-shelf-contents-renderer',
-            
+
             // Content grids and lists
             'ytd-browse[page-subtype="home"] ytd-rich-grid-renderer #contents > *',
             'ytd-browse[page-subtype="home"] ytd-rich-grid-renderer ytd-rich-item-renderer',
             'ytd-browse[page-subtype="home"] ytd-rich-grid-renderer ytd-rich-section-renderer',
             'ytd-browse[page-subtype="home"] #contents > *',
             'ytd-browse[page-subtype="home"] #primary #contents > *',
-            
+
             // Section renderers
             'ytd-browse[page-subtype="home"] ytd-item-section-renderer',
             'ytd-browse[page-subtype="home"] ytd-section-list-renderer',
             'ytd-browse[page-subtype="home"] ytd-continuation-item-renderer',
-            
+
             // Specific modern content types
             'ytd-browse[page-subtype="home"] ytd-reel-shelf-renderer',
             'ytd-browse[page-subtype="home"] [is-shorts]',
             'ytd-browse[page-subtype="home"] [overlay-style="SHORTS"]',
             'ytd-browse[page-subtype="home"] [href*="/shorts/"]',
-            
+
             // Trending and recommendation sections
             'ytd-browse[page-subtype="home"] ytd-rich-shelf-renderer[is-trending]',
             'ytd-browse[page-subtype="home"] ytd-rich-shelf-renderer[is-recommended]',
             'ytd-browse[page-subtype="home"] [aria-label*="Trending"]',
             'ytd-browse[page-subtype="home"] [aria-label*="Recommended"]',
-            
+
             // Any video thumbnails
             'ytd-browse[page-subtype="home"] ytd-thumbnail',
             'ytd-browse[page-subtype="home"] .ytd-thumbnail',
-            
+
             // Catch-all for any remaining video elements
             'ytd-browse[page-subtype="home"] [href*="/watch?v="]',
             'ytd-browse[page-subtype="home"] a[href*="/watch"]'
         ];
-        
+
         homepageSelectors.forEach(selector => {
             try {
                 const elements = document.querySelectorAll(selector);
@@ -1261,7 +1257,7 @@ class ShortsBlocker {
                 // Ignore selector errors
             }
         });
-        
+
         // Also hide any video elements that might slip through
         const videoElements = document.querySelectorAll('ytd-browse[page-subtype="home"] *[href*="/watch"]');
         videoElements.forEach(element => {
@@ -1314,8 +1310,8 @@ class ShortsBlocker {
     }
 
     isChannelPage() {
-        return location.pathname.includes('/channel/') || 
-               location.pathname.includes('/c/') || 
+        return location.pathname.includes('/channel/') ||
+               location.pathname.includes('/c/') ||
                location.pathname.includes('/user/') ||
                location.pathname.match(/\/@[\w-]+/);
     }
@@ -1329,17 +1325,17 @@ class ShortsBlocker {
 
         const titleElement = videoElement.querySelector('a#video-title, h3 a, .ytd-video-meta-block a');
         const descElement = videoElement.querySelector('#description-text, .ytd-video-meta-block');
-        
+
         let isModern = false;
-        
+
         if (titleElement) {
             const title = titleElement.textContent.toLowerCase();
-            
+
             // Check for modern content indicators
-            isModern = CONFIG.MODERN_CONTENT_INDICATORS.some(indicator => 
+            isModern = CONFIG.MODERN_CONTENT_INDICATORS.some(indicator =>
                 title.includes(indicator.toLowerCase())
             );
-            
+
             // Additional modern patterns
             if (!isModern) {
                 const modernPatterns = [
@@ -1354,19 +1350,19 @@ class ShortsBlocker {
                     /\b(what\s+do\s+you\s+think|let\s+me\s+know)\b/i,
                     /\b(comment\s+below|in\s+the\s+comments)\b/i
                 ];
-                
+
                 isModern = modernPatterns.some(pattern => pattern.test(title));
             }
         }
-        
+
         // Check description for modern indicators
         if (!isModern && descElement) {
             const desc = descElement.textContent.toLowerCase();
-            isModern = CONFIG.MODERN_CONTENT_INDICATORS.slice(0, 10).some(indicator => 
+            isModern = CONFIG.MODERN_CONTENT_INDICATORS.slice(0, 10).some(indicator =>
                 desc.includes(indicator.toLowerCase())
             );
         }
-        
+
         // Check for modern UI elements
         if (!isModern) {
             const modernUIElements = [
@@ -1376,12 +1372,12 @@ class ShortsBlocker {
                 '.ytd-notification-topbar-button-renderer',
                 '[data-target-id*="subscribe"]'
             ];
-            
-            isModern = modernUIElements.some(selector => 
+
+            isModern = modernUIElements.some(selector =>
                 videoElement.querySelector(selector)
             );
         }
-        
+
         this.modernContentCache.set(videoElement, isModern);
         return isModern;
     }
@@ -1399,7 +1395,7 @@ class ShortsBlocker {
                 const title = titleElement.textContent || '';
                 const duration = durationElement.textContent || '';
 
-                const isShort = duration.match(/^[0-5]?\d$/) || 
+                const isShort = duration.match(/^[0-5]?\d$/) ||
                               title.toLowerCase().includes('#shorts') ||
                               title.toLowerCase().includes('#short');
 
@@ -1522,7 +1518,7 @@ class ShortsBlocker {
     }
 }
 
-// ===== DATE-MODIFIER.JS =====
+    // === DATE-MODIFIER ===
 // Enhanced Date Modifier
 class DateModifier {
     constructor(maxDate) {
@@ -1758,39 +1754,39 @@ class DateModifier {
 
     addMissingViewCounts() {
         const videoElements = document.querySelectorAll('ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer');
-        
+
         videoElements.forEach(videoElement => {
             if (videoElement.dataset.tmViewsAdded) return;
-            
+
             const metadataLine = videoElement.querySelector('#metadata-line');
             if (!metadataLine) return;
-            
+
             const spans = metadataLine.querySelectorAll('span');
             let hasViews = false;
-            
+
             spans.forEach(span => {
                 if (span.textContent && span.textContent.toLowerCase().includes('view')) {
                     hasViews = true;
                 }
             });
-            
+
             if (!hasViews && spans.length > 0) {
                 // Generate a realistic view count
                 const viewCount = this.generateRealisticViewCount();
-                
+
                 // Create view count element
                 const viewSpan = document.createElement('span');
                 viewSpan.textContent = viewCount + ' views';
                 viewSpan.style.color = 'var(--yt-spec-text-secondary)';
                 viewSpan.setAttribute('data-added-by-time-machine', 'true');
-                
+
                 // Add separator if there are other elements
                 if (spans.length > 0) {
                     const separator = document.createElement('span');
                     separator.textContent = ' • ';
                     separator.style.color = 'var(--yt-spec-text-secondary)';
                     separator.setAttribute('data-added-by-time-machine', 'true');
-                    
+
                     // Insert before the date (usually the last span)
                     const lastSpan = spans[spans.length - 1];
                     metadataLine.insertBefore(viewSpan, lastSpan);
@@ -1798,7 +1794,7 @@ class DateModifier {
                 } else {
                     metadataLine.appendChild(viewSpan);
                 }
-                
+
                 videoElement.dataset.tmViewsAdded = 'true';
             }
         });
@@ -1808,17 +1804,17 @@ class DateModifier {
         // Generate view counts that feel authentic for the time period
         const ranges = [
             { min: 100, max: 5000, weight: 30 },      // Small videos
-            { min: 5000, max: 50000, weight: 25 },    // Medium videos  
+            { min: 5000, max: 50000, weight: 25 },    // Medium videos
             { min: 50000, max: 500000, weight: 20 },  // Popular videos
             { min: 500000, max: 2000000, weight: 15 }, // Very popular
             { min: 2000000, max: 10000000, weight: 8 }, // Viral
             { min: 10000000, max: 50000000, weight: 2 } // Mega viral
         ];
-        
+
         // Weighted random selection
         const totalWeight = ranges.reduce((sum, range) => sum + range.weight, 0);
         let random = Math.random() * totalWeight;
-        
+
         for (const range of ranges) {
             random -= range.weight;
             if (random <= 0) {
@@ -1826,7 +1822,7 @@ class DateModifier {
                 return this.formatViewCount(viewCount);
             }
         }
-        
+
         // Fallback
         return this.formatViewCount(Math.floor(Math.random() * 100000) + 1000);
     }
@@ -1879,7 +1875,7 @@ class DateModifier {
     }
 }
 
-// ===== SEARCH-INTERCEPTOR.JS =====
+    // === SEARCH-INTERCEPTOR ===
 // Enhanced Search Interceptor
 class SearchInterceptor {
     constructor(maxDate, shortsBlocker) {
@@ -1896,22 +1892,19 @@ class SearchInterceptor {
 
     setupSearchInterception() {
         this.log('Setting up search interception...');
-        
+
         // Intercept search form submissions
         this.interceptSearchForms();
-        
+
         // Intercept search input enter key
         this.interceptSearchInputs();
-        
+
         // Intercept search button clicks
         this.interceptSearchButtons();
-        
-        // Intercept video clicks from search results
-        this.interceptVideoClicks();
-        
+
         // Clean up search results
         this.cleanupSearchResults();
-        
+
         // Monitor for new search elements
         this.monitorForNewElements();
     }
@@ -1989,97 +1982,9 @@ class SearchInterceptor {
         searchButtons.forEach(interceptButton);
     }
 
-    interceptVideoClicks() {
-        const interceptVideoLink = (link) => {
-            if (this.interceptedElements.has(link)) return;
-            this.interceptedElements.add(link);
-
-            link.addEventListener('click', (e) => {
-                // Only intercept if we're on a search results page
-                if (!this.isSearchResultsPage()) return;
-                
-                // Only intercept video watch links
-                const href = link.getAttribute('href');
-                if (!href || !href.includes('/watch?v=')) return;
-                
-                this.log('Intercepting video click from search results:', href);
-                
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Show loading indicator
-                this.showVideoLoadingIndicator();
-                
-                // Store that we're navigating from search results
-                sessionStorage.setItem('tm-from-search', 'true');
-                sessionStorage.setItem('tm-target-url', href);
-                
-                // Navigate to the video
-                window.location.href = href;
-            });
-        };
-
-        // Find all video links in search results
-        const videoLinks = document.querySelectorAll(
-            'ytd-video-renderer a[href*="/watch?v="], ' +
-            'ytd-compact-video-renderer a[href*="/watch?v="], ' +
-            'ytd-grid-video-renderer a[href*="/watch?v="], ' +
-            'ytd-rich-item-renderer a[href*="/watch?v="], ' +
-            'a#video-title[href*="/watch?v="], ' +
-            'a.ytd-video-renderer[href*="/watch?v="]'
-        );
-        videoLinks.forEach(interceptVideoLink);
-    }
-
-    isSearchResultsPage() {
-        return window.location.pathname === '/results' || 
-               window.location.search.includes('search_query=');
-    }
-
-    showVideoLoadingIndicator() {
-        // Remove any existing loading indicator
-        const existingIndicator = document.getElementById('tm-video-loading');
-        if (existingIndicator) {
-            existingIndicator.remove();
-        }
-        
-        // Create a loading overlay for video navigation
-        const loadingOverlay = document.createElement('div');
-        loadingOverlay.id = 'tm-video-loading';
-        loadingOverlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(15, 15, 15, 0.95);
-            z-index: 999999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-family: Roboto, Arial, sans-serif;
-            font-size: 16px;
-        `;
-        
-        loadingOverlay.innerHTML = `
-            <div style="text-align: center;">
-                <div style="border: 2px solid #333; border-top: 2px solid #ff0000; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
-                <div>Loading video from the past...</div>
-            </div>
-            <style>
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-            </style>
-        `;
-        
-        document.body.appendChild(loadingOverlay);
-    }
     performSearch(query, inputElement) {
         this.log('Intercepting search for:', query);
-        
+
         // Don't add before: if it already exists
         if (query.includes('before:')) {
             this.log('Search already contains before: filter, proceeding normally');
@@ -2090,12 +1995,12 @@ class SearchInterceptor {
         // Add the before: filter to the actual search
         const beforeDate = this.maxDate.toISOString().split('T')[0];
         const modifiedQuery = query + ' before:' + beforeDate;
-        
+
         this.log('Modified search query:', modifiedQuery);
-        
+
         // Execute the search with the modified query
         this.executeSearch(modifiedQuery, inputElement);
-        
+
         // Keep the original query visible in the input - multiple attempts
         const restoreOriginalQuery = () => {
             const searchInputs = document.querySelectorAll('input#search, input[name="search_query"]');
@@ -2105,7 +2010,7 @@ class SearchInterceptor {
                 }
             });
         };
-        
+
         // Restore immediately and with delays
         restoreOriginalQuery();
         setTimeout(restoreOriginalQuery, 50);
@@ -2124,13 +2029,13 @@ class SearchInterceptor {
         // Method 2: Modify the URL and navigate
         const searchParams = new URLSearchParams();
         searchParams.set('search_query', searchQuery);
-        
+
         const searchUrl = '/results?' + searchParams.toString();
         this.log('Navigating to search URL:', searchUrl);
-        
+
         // Show loading indicator to prevent "offline" message
         this.showSearchLoading();
-        
+
         window.location.href = searchUrl;
     }
 
@@ -2153,7 +2058,7 @@ class SearchInterceptor {
             font-family: Roboto, Arial, sans-serif;
             font-size: 16px;
         `;
-        
+
         loadingOverlay.innerHTML = `
             <div style="text-align: center;">
                 <div style="border: 2px solid #333; border-top: 2px solid #ff0000; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
@@ -2166,9 +2071,9 @@ class SearchInterceptor {
                 }
             </style>
         `;
-        
+
         document.body.appendChild(loadingOverlay);
-        
+
         // Remove loading overlay after navigation starts
         setTimeout(() => {
             const overlay = document.getElementById('tm-search-loading');
@@ -2184,13 +2089,13 @@ class SearchInterceptor {
                 // Use YouTube's internal search if available
                 const searchParams = new URLSearchParams(window.location.search);
                 searchParams.set('search_query', query);
-                
+
                 const newUrl = window.location.pathname + '?' + searchParams.toString();
                 window.history.pushState({}, '', newUrl);
-                
+
                 // Show loading for internal search too
                 this.showSearchLoading();
-                
+
                 // Trigger a page reload to execute the search
                 window.location.reload();
                 return true;
@@ -2198,7 +2103,7 @@ class SearchInterceptor {
         } catch (error) {
             this.log('YouTube internal search failed:', error);
         }
-        
+
         return false;
     }
 
@@ -2213,7 +2118,7 @@ class SearchInterceptor {
                             node.style.display = 'none';
                             node.style.visibility = 'hidden';
                         }
-                        
+
                         // Check for offline messages in child elements
                         const offlineElements = node.querySelectorAll('*');
                         offlineElements.forEach(el => {
@@ -2222,22 +2127,18 @@ class SearchInterceptor {
                                 el.style.visibility = 'hidden';
                             }
                         });
-                        
+
                         // Check for new search forms
                         const newForms = node.querySelectorAll('form[role="search"], form#search-form, ytd-searchbox form');
                         newForms.forEach((form) => this.interceptSearchForms());
-                        
+
                         // Check for new search inputs
                         const newInputs = node.querySelectorAll('input#search, input[name="search_query"]');
                         newInputs.forEach((input) => this.interceptSearchInputs());
-                        
+
                         // Check for new search buttons
                         const newButtons = node.querySelectorAll('#search-icon-legacy button, button[aria-label="Search"], ytd-searchbox button');
                         newButtons.forEach((btn) => this.interceptSearchButtons());
-                        
-                        // Check for new video links
-                        const newVideoLinks = node.querySelectorAll('a[href*="/watch?v="]');
-                        newVideoLinks.forEach((link) => this.interceptVideoClicks());
                     }
                 });
             });
@@ -2253,8 +2154,7 @@ class SearchInterceptor {
             this.interceptSearchForms();
             this.interceptSearchInputs();
             this.interceptSearchButtons();
-            this.interceptVideoClicks();
-            
+
             // Hide any offline messages that appear
             const offlineMessages = document.querySelectorAll('*');
             offlineMessages.forEach(el => {
@@ -2273,11 +2173,11 @@ class SearchInterceptor {
             const allElements = document.querySelectorAll('*');
             allElements.forEach(element => {
                 if (element.dataset.tmProcessedForBefore) return;
-                
+
                 const text = element.textContent || element.innerText || '';
                 const ariaLabel = element.getAttribute('aria-label') || '';
                 const title = element.getAttribute('title') || '';
-                
+
                 if (text.includes('before:') || ariaLabel.includes('before:') || title.includes('before:')) {
                     // Check if it's a search filter chip or similar element
                     if (element.matches('ytd-search-filter-renderer, .search-filter-chip, ytd-chip-cloud-chip-renderer, ytd-search-sub-menu-renderer *')) {
@@ -2301,21 +2201,21 @@ class SearchInterceptor {
                         parent = parent.parentElement;
                     }
                 }
-                
+
                 element.dataset.tmProcessedForBefore = 'true';
             });
-            
+
             // Also hide specific YouTube search filter elements
             const specificSelectors = [
                 'ytd-search-filter-renderer',
-                'ytd-chip-cloud-chip-renderer', 
+                'ytd-chip-cloud-chip-renderer',
                 'ytd-search-sub-menu-renderer',
                 '.search-filter-chip',
                 '[data-text*="before:"]',
                 '[aria-label*="before:"]',
                 '[title*="before:"]'
             ];
-            
+
             specificSelectors.forEach(selector => {
                 try {
                     const elements = document.querySelectorAll(selector);
@@ -2336,7 +2236,7 @@ class SearchInterceptor {
         // Run cleanup immediately and periodically
         hideBeforeChips();
         setInterval(hideBeforeChips, 200); // More frequent cleanup
-        
+
         // Also run cleanup on page mutations
         const observer = new MutationObserver(() => {
             setTimeout(hideBeforeChips, 50);
@@ -2353,7 +2253,7 @@ class SearchInterceptor {
                 });
             }, 10);
         });
-        
+
         observer.observe(document.body, {
             childList: true,
             subtree: true
@@ -2386,7 +2286,7 @@ class SearchInterceptor {
     }
 }
 
-// ===== UI-MANAGER.JS =====
+    // === UI-MANAGER ===
 // UI Manager
 class UIManager {
     constructor(timeMachine) {
@@ -2517,7 +2417,7 @@ class UIManager {
             return '<div style="text-align: center; color: #666; font-style: italic;">No subscriptions added</div>';
         }
 
-        return subscriptions.map((sub, index) => 
+        return subscriptions.map((sub, index) =>
             '<div class="tm-list-item">' +
             '<div>' +
             '<div style="font-weight: bold;">' + sub.name + '</div>' +
@@ -2674,7 +2574,7 @@ class UIManager {
                 max-width: 1200px;
                 margin: 0 auto;
             }
-            
+
             .tm-channel-header {
                 margin-bottom: 20px;
                 padding: 15px;
@@ -2684,13 +2584,13 @@ class UIManager {
                 justify-content: space-between;
                 align-items: center;
             }
-            
+
             .tm-channel-title {
                 font-size: 18px;
                 font-weight: 500;
                 color: var(--yt-spec-text-primary);
             }
-            
+
             .tm-load-older-btn {
                 padding: 8px 16px;
                 background: #ff0000;
@@ -2701,11 +2601,11 @@ class UIManager {
                 font-size: 12px;
                 transition: background 0.2s;
             }
-            
+
             .tm-load-older-btn:hover {
                 background: #cc0000;
             }
-            
+
             .tm-load-older-btn:disabled {
                 background: #666;
                 cursor: not-allowed;
@@ -2735,12 +2635,12 @@ class UIManager {
             .tm-video-card:hover {
                 transform: translateY(-4px);
             }
-            
+
             .tm-viral-video {
                 border: 2px solid #ff6b6b;
                 box-shadow: 0 0 10px rgba(255, 107, 107, 0.3);
             }
-            
+
             .tm-viral-video:hover {
                 box-shadow: 0 4px 20px rgba(255, 107, 107, 0.5);
             }
@@ -2954,7 +2854,6 @@ class UIManager {
             }
 
             /* ULTRA-AGGRESSIVE homepage nuking */
-            /* Only apply to actual homepage */
             ytd-browse[page-subtype="home"] ytd-video-renderer:not(.tm-approved),
             ytd-browse[page-subtype="home"] ytd-grid-video-renderer:not(.tm-approved),
             ytd-browse[page-subtype="home"] ytd-rich-item-renderer:not(.tm-approved),
@@ -2967,24 +2866,8 @@ class UIManager {
             ytd-browse[page-subtype="home"] ytd-continuation-item-renderer:not(.tm-approved),
             ytd-browse[page-subtype="home"] ytd-rich-grid-renderer #contents > *:not(.tm-homepage):not(.tm-approved),
             ytd-browse[page-subtype="home"] #contents > *:not(.tm-homepage):not(.tm-approved),
-            ytd-browse[page-subtype="home"] ytd-thumbnail:not(.tm-approved) {
-                display: none !important;
-                visibility: hidden !important;
-                opacity: 0 !important;
-                height: 0 !important;
-                width: 0 !important;
-                max-height: 0 !important;
-                max-width: 0 !important;
-                overflow: hidden !important;
-                position: absolute !important;
-                left: -9999px !important;
-                top: -9999px !important;
-                z-index: -9999 !important;
-                pointer-events: none !important;
-            }
-            
-            /* Separate rule for video links to avoid affecting search results */
-            ytd-browse[page-subtype="home"] [href*="/watch?v="]:not(.tm-approved):not([data-context-menu-target]) {
+            ytd-browse[page-subtype="home"] ytd-thumbnail:not(.tm-approved),
+            ytd-browse[page-subtype="home"] [href*="/watch?v="]:not(.tm-approved) {
                 display: none !important;
                 visibility: hidden !important;
                 opacity: 0 !important;
@@ -3003,609 +2886,1317 @@ class UIManager {
     }
 }
 
-// ===== MAIN CLASS =====
-// Main YouTube Time Machine Class
-class YouTubeTimeMachine {
-    constructor() {
-        this.settings = {
-            active: GM_getValue('ytTimeMachineActive', true),
-            date: GM_getValue('ytTimeMachineDate', '2011-01-01')
-        };
-        
-        this.maxDate = new Date(this.settings.date);
-        this.stats = {
-            processed: 0,
-            filtered: 0,
-            apiCalls: 0,
-            cacheHits: 0
-        };
-        
-        this.isInitialized = false;
-        this.currentPage = '';
-        this.pageObserver = null;
-        this.contentObserver = null;
-        this.lastUrl = '';
-        
-        // Initialize components
-        this.apiManager = new APIManager();
-        this.subscriptionManager = new SubscriptionManager();
-        this.recommendationEngine = new RecommendationEngine(this.apiManager);
-        this.shortsBlocker = new ShortsBlocker();
-        this.dateModifier = new DateModifier(this.maxDate);
-        this.searchInterceptor = new SearchInterceptor(this.maxDate, this.shortsBlocker);
-        this.uiManager = new UIManager(this);
-        
-        this.log('YouTube Time Machine initialized');
-    }
+    // === MAIN TIME MACHINE CLASS ===
+    class YouTubeTimeMachine {
+        constructor() {
+            this.apiManager = new APIManager();
+            this.subscriptionManager = new SubscriptionManager();
+            this.recommendationEngine = new RecommendationEngine(this.apiManager);
+            this.shortsBlocker = new ShortsBlocker();
+            this.uiManager = new UIManager(this);
 
-    async init() {
-        if (this.isInitialized) return;
-        
-        this.log('Initializing Time Machine...');
-        
-        // Wait for page to be ready
-        if (document.readyState === 'loading') {
-            await new Promise(resolve => {
-                document.addEventListener('DOMContentLoaded', resolve);
-            });
+            this.settings = {
+                date: GM_getValue('ytTimeMachineDate', '2014-06-14'),
+                active: GM_getValue('ytTimeMachineActive', true),
+                uiVisible: GM_getValue('ytTimeMachineUIVisible', true),
+                lastAdvancedDate: GM_getValue('ytLastAdvancedDate', new Date().toDateString())
+            };
+
+            this.checkAndAdvanceDate();
+
+            this.maxDate = new Date(this.settings.date);
+            this.dateModifier = new DateModifier(this.maxDate);
+            this.searchInterceptor = new SearchInterceptor(this.maxDate, this.shortsBlocker);
+
+            this.isProcessing = false;
+            this.videoCache = new Map();
+            this.homepageLoadedCount = 0;
+
+            this.stats = {
+                filtered: 0,
+                processed: 0,
+                apiCalls: 0,
+                cacheHits: 0
+            };
+
+            this.init();
+
+            // Set up hourly real-time checks
+            this.setupHourlyTimeCheck();
         }
-        
-        // Set up UI and styles
-        this.setupUI();
-        this.setupStyles();
-        this.setupEventHandlers();
-        
-        // Set up page monitoring
-        this.setupPageMonitoring();
-        
-        // Handle initial page
-        this.handlePageChange();
-        
-        // Check for navigation from search results
-        this.handleSearchNavigation();
-        
-        this.isInitialized = true;
-        this.log('Time Machine fully initialized');
-    }
 
-    setupUI() {
-        // Create toggle button
-        const toggleBtn = document.createElement('button');
-        toggleBtn.id = 'timeMachineToggle';
-        toggleBtn.innerHTML = '⏰';
-        toggleBtn.className = 'visible';
-        toggleBtn.addEventListener('click', () => this.toggleUI());
-        document.body.appendChild(toggleBtn);
-
-        // Create main UI panel
-        const uiPanel = document.createElement('div');
-        uiPanel.id = 'timeMachineUI';
-        uiPanel.className = 'hidden';
-        document.body.appendChild(uiPanel);
-
-        this.updateUI();
-    }
-
-    setupStyles() {
-        const styleElement = document.createElement('style');
-        styleElement.textContent = this.uiManager.getStyles() + this.shortsBlocker.getShortsBlockingCSS();
-        document.head.appendChild(styleElement);
-    }
-
-    setupEventHandlers() {
-        // Keyboard shortcut
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-                e.preventDefault();
-                this.toggleUI();
-            }
-        });
-
-        // UI event handlers
-        document.addEventListener('click', (e) => {
-            if (e.target.id === 'tmHideBtn') this.toggleUI();
-            if (e.target.id === 'tmSetDate') this.setDate();
-            if (e.target.id === 'tmAddApi') this.addApiKey();
-            if (e.target.id === 'tmAddSub') this.addSubscription();
-            if (e.target.id === 'tmLoadVideos') this.loadVideos();
-            if (e.target.id === 'tmToggle') this.toggleActive();
-            if (e.target.id === 'tmClearCache') this.clearCache();
-            if (e.target.id === 'tmTestAll') this.testAllKeys();
-            if (e.target.id === 'tmRefreshVideosBtn') this.refreshVideos();
-        });
-    }
-
-    setupPageMonitoring() {
-        // Monitor URL changes
-        this.lastUrl = window.location.href;
-        
-        const checkUrlChange = () => {
-            if (window.location.href !== this.lastUrl) {
-                this.lastUrl = window.location.href;
-                this.handlePageChange();
-            }
-        };
-
-        // Check for URL changes periodically
-        setInterval(checkUrlChange, 500);
-
-        // Also listen for popstate events
-        window.addEventListener('popstate', () => {
-            setTimeout(() => this.handlePageChange(), 100);
-        });
-
-        // Monitor for content changes
-        this.contentObserver = new MutationObserver(() => {
-            if (this.settings.active) {
-                this.processPage();
-            }
-        });
-
-        this.contentObserver.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-    }
-
-    handlePageChange() {
-        const url = window.location.href;
-        const pathname = window.location.pathname;
-        
-        this.log('Page changed to:', pathname);
-        
-        if (pathname === '/') {
-            this.currentPage = 'home';
-            this.handleHomePage();
-        } else if (pathname === '/results') {
-            this.currentPage = 'search';
-            this.handleSearchPage();
-        } else if (pathname === '/watch') {
-            this.currentPage = 'watch';
-            this.handleWatchPage();
-        } else if (pathname.includes('/channel/') || pathname.includes('/c/') || pathname.includes('/user/') || pathname.match(/\/@[\w-]+/)) {
-            this.currentPage = 'channel';
-            this.handleChannelPage();
+        setupHourlyTimeCheck() {
+            // Check real time every hour to catch any time changes
+            setInterval(() => {
+                if (CONFIG.autoAdvanceDays) {
+                    this.log('Hourly time check...');
+                    this.checkRealTimeAndAdvance();
+                }
+            }, 60 * 60 * 1000); // Every hour
         }
-        
-        // Always process the page if active
-        if (this.settings.active) {
-            setTimeout(() => this.processPage(), 100);
-        }
-    }
 
-    handleSearchNavigation() {
-        // Check if we navigated from search results
-        const fromSearch = sessionStorage.getItem('tm-from-search');
-        if (fromSearch === 'true' && window.location.pathname === '/watch') {
-            this.log('Detected navigation from search results, reinitializing...');
-            sessionStorage.removeItem('tm-from-search');
-            
-            // Force reinitialization of watch page
-            setTimeout(() => {
-                this.enhanceWatchPage();
-            }, 500);
-        }
-    }
+        setupAutoRefresh() {
+            if (CONFIG.autoRefreshInterval) {
+                this.log('Setting up aggressive auto-refresh every ' + (CONFIG.autoRefreshInterval / 60000) + ' minutes with ' + (CONFIG.refreshVideoPercentage * 100) + '% new videos');
 
-    handleHomePage() {
-        this.log('Handling homepage');
-        if (this.settings.active && window.location.pathname === '/') {
-            // Only nuke if we're actually on the homepage
-            this.shortsBlocker.nukeHomepage();
-            
-            // Set up auto-loading if enabled
-            if (CONFIG.autoLoadOnHomepage) {
-                setTimeout(() => {
-                    this.loadHomepageVideos();
-                }, CONFIG.autoLoadDelay);
+                setInterval(() => {
+                    if (this.isHomePage()) {
+                        this.log('Auto-refresh triggered - loading fresh videos...');
+                        this.loadVideosFromSubscriptions(true).then(() => {
+                            const container = document.querySelector('ytd-browse[page-subtype="home"] ytd-rich-grid-renderer');
+                            if (container) {
+                                this.replaceHomepage(container, true);
+                            }
+                            this.log('Auto-refresh completed successfully');
+                        }).catch(error => {
+                            this.log('Auto-refresh failed:', error);
+                        });
+                    }
+                }, CONFIG.autoRefreshInterval);
             }
         }
-    }
 
-    handleSearchPage() {
-        this.log('Handling search page');
-        if (this.settings.active) {
-            // Don't nuke search results - only set up interception
-            this.searchInterceptor.setupSearchInterception();
-            
-            // Only block shorts in search results, not all content
-            setTimeout(() => {
-                this.shortsBlocker.blockShorts();
-            }, 100);
+        startTimeTracking() {
+            // Check for time jumps every 30 seconds
+            this.timeTrackingInterval = setInterval(() => {
+                this.detectTimeJumps();
+            }, 30000);
+
+            // Also check immediately
+            setTimeout(() => this.detectTimeJumps(), 1000);
         }
-    }
 
-    handleWatchPage() {
-        this.log('Handling watch page');
-        if (this.settings.active) {
-            setTimeout(() => {
-                this.enhanceWatchPage();
-            }, 200);
+        detectTimeJumps() {
+            const now = Date.now();
+            const expectedTime = this.lastTimeCheck + 30000; // Expected time after 30 seconds
+            const timeDifference = now - expectedTime;
+
+            this.log('=== TIME JUMP DETECTION ===');
+            this.log('Current time:', new Date(now).toString());
+            this.log('Expected time:', new Date(expectedTime).toString());
+            this.log('Time difference (ms):', timeDifference);
+            this.log('Time difference (hours):', Math.round(timeDifference / (1000 * 60 * 60) * 100) / 100);
+
+            // If time jumped forward by more than 2 minutes, consider it a manual change
+            if (timeDifference > 120000) { // 2 minutes in milliseconds
+                const hoursJumped = timeDifference / (1000 * 60 * 60);
+                const daysJumped = Math.floor(hoursJumped / 24);
+
+                this.log('DETECTED TIME JUMP! Hours jumped:', hoursJumped);
+                this.log('Days to advance:', daysJumped);
+
+                if (daysJumped >= 1) {
+                    this.advanceTimeMachineDate(daysJumped);
+                }
+            }
+
+            this.lastTimeCheck = now;
+            this.log('=== TIME JUMP DETECTION END ===');
         }
-    }
 
-    handleChannelPage() {
-        this.log('Handling channel page');
-        if (this.settings.active) {
-            setTimeout(() => {
-                this.enhanceChannelPage();
-            }, 200);
+        advanceTimeMachineDate(daysToAdvance) {
+            this.log('=== ADVANCING TIME MACHINE DATE ===');
+            this.log('Days to advance:', daysToAdvance);
+            this.log('Current target date:', this.settings.date);
+
+            // Parse current date and advance it
+            const currentDate = new Date(this.settings.date + 'T00:00:00');
+            this.log('Parsed current date:', currentDate.toString());
+
+            // Add the days
+            currentDate.setDate(currentDate.getDate() + daysToAdvance);
+
+            // Format back to YYYY-MM-DD
+            const newDateString = currentDate.toISOString().split('T')[0];
+
+            this.log('New target date:', newDateString);
+
+            // Update all the date references
+            this.settings.date = newDateString;
+            this.maxDate = new Date(newDateString + 'T23:59:59');
+
+            // Save to storage
+            GM_setValue('ytSettings', this.settings);
+            GM_setValue('ytLastAdvancedDate', new Date().toDateString());
+
+            // Update other components
+            if (this.dateModifier) {
+                this.dateModifier.setMaxDate(this.maxDate);
+            }
+            if (this.searchInterceptor) {
+                this.searchInterceptor.setMaxDate(this.maxDate);
+            }
+
+            // Clear caches to force fresh content
+            this.apiManager.clearCache();
+
+            // Update UI
+            this.updateUI();
+
+            this.log('Time machine date advanced successfully!');
+            this.log('=== ADVANCING TIME MACHINE DATE END ===');
         }
-    }
 
-    processPage() {
-        if (!this.settings.active) return;
-        
-        // Block shorts and modern content
-        this.shortsBlocker.blockShorts();
-        
-        // Update dates
-        this.dateModifier.updateDates();
-        
-        // Update stats
-        this.stats.processed++;
-    }
+        async checkAndAdvanceDate() {
+            if (!CONFIG.autoAdvanceDays) return;
 
-    async loadHomepageVideos() {
-        this.log('Loading homepage videos...');
-        // Implementation would go here
-    }
+            this.log('=== API-BASED DATE ADVANCEMENT START ===');
+            this.log('Current time machine target date:', this.settings.date);
 
-    async enhanceWatchPage() {
-        this.log('Enhancing watch page...');
-        
-        // Wait for page elements to load
-        await this.waitForElement('#secondary');
-        
-        const currentVideoTitle = this.getCurrentVideoTitle();
-        const currentChannelId = this.getCurrentChannelId();
-        
-        this.log('Current video:', currentVideoTitle);
-        this.log('Current channel:', currentChannelId);
-        
-        if (!currentVideoTitle) {
-            this.log('Could not determine current video title, retrying...');
-            setTimeout(() => this.enhanceWatchPage(), 1000);
-            return;
+            // Get real world date from YouTube API servers
+            const realWorldToday = await this.apiManager.getRealWorldDateFromAPI();
+            this.log('Real world date from API:', realWorldToday.toISOString());
+
+            const lastAdvancedString = GM_getValue('ytLastAdvancedDate', null);
+            this.log('Last advanced date from storage:', lastAdvancedString);
+
+            let lastAdvancedRealWorldDate;
+            if (lastAdvancedString) {
+                lastAdvancedRealWorldDate = new Date(lastAdvancedString);
+                this.log('Last advanced real world date:', lastAdvancedRealWorldDate.toISOString());
+            } else {
+                // First time running, set to yesterday so we advance by 1 day
+                lastAdvancedRealWorldDate = new Date(realWorldToday);
+                lastAdvancedRealWorldDate.setDate(lastAdvancedRealWorldDate.getDate() - 1);
+                this.log('First time running, using yesterday as baseline:', lastAdvancedRealWorldDate.toISOString());
+            }
+
+            // Normalize both dates to midnight for accurate day comparison
+            const todayNormalized = new Date(realWorldToday.getFullYear(), realWorldToday.getMonth(), realWorldToday.getDate());
+            const lastAdvancedNormalized = new Date(lastAdvancedRealWorldDate.getFullYear(), lastAdvancedRealWorldDate.getMonth(), lastAdvancedRealWorldDate.getDate());
+
+            this.log('Today normalized:', todayNormalized.toISOString());
+            this.log('Last advanced normalized:', lastAdvancedNormalized.toISOString());
+
+            const daysDifference = Math.floor((todayNormalized - lastAdvancedNormalized) / (1000 * 60 * 60 * 24));
+            this.log('Days difference calculated:', daysDifference);
+
+            if (daysDifference > 0) {
+                this.log('*** ADVANCING TIME MACHINE DATE BY', daysDifference, 'DAYS ***');
+
+                // Get current time machine target date and advance it
+                const currentTimeMachineDate = new Date(this.settings.date);
+                this.log('Current time machine target date before advancement:', currentTimeMachineDate.toISOString());
+
+                // Advance the time machine target date by the calculated days
+                currentTimeMachineDate.setDate(currentTimeMachineDate.getDate() + daysDifference);
+                this.log('New time machine target date after advancement:', currentTimeMachineDate.toISOString());
+
+                // Update the time machine settings
+                this.settings.date = currentTimeMachineDate.toISOString().split('T')[0];
+                this.log('Updated settings.date string:', this.settings.date);
+
+                // Save settings to storage
+                GM_setValue('ytSettings', this.settings);
+                this.log('Saved updated settings to storage');
+
+                // Update last advanced date to today's real world date
+                GM_setValue('ytLastAdvancedDate', realWorldToday.toISOString());
+                this.log('Updated last advanced date to:', realWorldToday.toISOString());
+
+                // Update all internal date references
+                this.maxDate = new Date(this.settings.date + 'T23:59:59');
+                this.log('Updated internal maxDate to:', this.maxDate.toISOString());
+
+                if (this.dateModifier) {
+                    this.dateModifier.setMaxDate(this.maxDate);
+                    this.log('Updated dateModifier maxDate');
+                }
+
+                if (this.searchInterceptor) {
+                    this.searchInterceptor.setMaxDate(this.maxDate);
+                    this.log('Updated searchInterceptor maxDate');
+                }
+
+                // Clear all caches to force fresh content loading
+                this.apiManager.clearCache();
+                this.log('Cleared all API caches');
+
+                // Update UI to show new date
+                this.updateUI();
+                this.log('Updated UI to reflect new target date');
+
+                this.log('*** TIME MACHINE DATE ADVANCEMENT COMPLETED ***');
+            } else {
+                this.log('No date advancement needed (days difference:', daysDifference, ')');
+            }
+
+            this.log('=== API-BASED DATE ADVANCEMENT END ===');
         }
-        
-        // Get all available videos
-        const allVideos = this.getAllCachedVideos();
-        
-        // Get fresh videos from current channel
-        let freshVideos = [];
-        if (currentChannelId) {
+
+        async checkRealTimeAndAdvance() {
             try {
-                freshVideos = await this.apiManager.getChannelVideos(currentChannelId, '', this.maxDate);
-                this.log('Fetched fresh videos:', freshVideos.length);
+                this.log('Checking real world time via API...');
+
+                // Get real current time from external API
+                const realCurrentTime = await this.getRealCurrentTime();
+                if (!realCurrentTime) {
+                    this.log('Failed to get real time, falling back to system time');
+                    this.fallbackDateAdvancement();
+                    return;
+                }
+
+                this.log('Real current time from API:', realCurrentTime.toDateString());
+
+                // Get last real time we recorded
+                const lastRealTimeStr = GM_getValue('ytLastRealTime', null);
+                const lastRealTime = lastRealTimeStr ? new Date(lastRealTimeStr) : new Date('2000-01-01');
+
+                this.log('Last recorded real time:', lastRealTime.toDateString());
+
+                // Normalize both to midnight for day comparison
+                const currentRealDay = new Date(realCurrentTime.getFullYear(), realCurrentTime.getMonth(), realCurrentTime.getDate());
+                const lastRealDay = new Date(lastRealTime.getFullYear(), lastRealTime.getMonth(), lastRealTime.getDate());
+
+                // Calculate days difference based on REAL time
+                const daysDifference = Math.floor((currentRealDay - lastRealDay) / (1000 * 60 * 60 * 24));
+
+                this.log('Real days passed since last check:', daysDifference);
+
+                if (daysDifference > 0) {
+                    // Advance the time machine date by real days passed
+                    const currentTimeMachineDate = new Date(this.settings.date);
+                    currentTimeMachineDate.setDate(currentTimeMachineDate.getDate() + daysDifference);
+
+                    const newTargetDate = currentTimeMachineDate.toISOString().split('T')[0];
+
+                    this.log('*** ADVANCING TIME MACHINE DATE ***');
+                    this.log('From:', this.settings.date);
+                    this.log('To:', newTargetDate);
+                    this.log('Days advanced:', daysDifference);
+
+                    // Update everything
+                    this.settings.date = newTargetDate;
+                    this.settings.lastAdvancedDate = currentRealDay.toDateString();
+
+                    // Save to persistent storage
+                    GM_setValue('ytTimeMachineDate', newTargetDate);
+                    GM_setValue('ytLastAdvancedDate', currentRealDay.toDateString());
+                    GM_setValue('ytLastRealTime', realCurrentTime.toISOString());
+
+                    // Update all references
+                    this.maxDate = new Date(newTargetDate);
+                    this.dateModifier.setMaxDate(newTargetDate);
+                    this.searchInterceptor.setMaxDate(this.maxDate);
+
+                    // Clear caches
+                    this.apiManager.clearCache();
+                    this.videoCache.clear();
+                    this.homepageLoadedCount = 0;
+
+                    this.log('*** TIME MACHINE DATE ADVANCEMENT COMPLETE ***');
+                } else {
+                    this.log('No advancement needed - same real day');
+                    // Still update the last real time for future comparisons
+                    GM_setValue('ytLastRealTime', realCurrentTime.toISOString());
+                }
+
             } catch (error) {
-                this.log('Failed to fetch fresh videos:', error);
+                this.log('Error checking real time:', error);
+                this.fallbackDateAdvancement();
             }
         }
-        
-        // Generate recommendations
-        const recommendations = await this.recommendationEngine.generateEnhancedRecommendations(
-            currentChannelId,
-            currentVideoTitle,
-            allVideos,
-            this.maxDate,
-            freshVideos
-        );
-        
-        this.log('Generated recommendations:', recommendations.length);
-        
-        // Display recommendations
-        this.displayWatchPageRecommendations(recommendations);
-    }
 
-    async enhanceChannelPage() {
-        this.log('Enhancing channel page...');
-        
-        const channelId = this.getCurrentChannelId();
-        const channelName = this.getCurrentChannelName();
-        
-        if (!channelId && !channelName) {
-            this.log('Could not determine channel info');
-            return;
+        async getRealCurrentTime() {
+            const timeAPIs = [
+                'https://worldtimeapi.org/api/timezone/Etc/UTC',
+                'https://api.ipgeolocation.io/timezone?apiKey=free',
+                'http://worldclockapi.com/api/json/utc/now'
+            ];
+
+            for (const apiUrl of timeAPIs) {
+                try {
+                    const response = await new Promise((resolve, reject) => {
+                        GM_xmlhttpRequest({
+                            method: 'GET',
+                            url: apiUrl,
+                            timeout: 5000,
+                            onload: resolve,
+                            onerror: reject,
+                            ontimeout: reject
+                        });
+                    });
+
+                    if (response.status === 200) {
+                        const data = JSON.parse(response.responseText);
+
+                        // Parse different API response formats
+                        let dateTime = null;
+                        if (data.datetime) {
+                            dateTime = data.datetime; // worldtimeapi.org
+                        } else if (data.date_time) {
+                            dateTime = data.date_time; // ipgeolocation.io
+                        } else if (data.currentDateTime) {
+                            dateTime = data.currentDateTime; // worldclockapi.com
+                        }
+
+                        if (dateTime) {
+                            const realTime = new Date(dateTime);
+                            if (!isNaN(realTime.getTime())) {
+                                this.log('Got real time from', apiUrl, ':', realTime.toISOString());
+                                return realTime;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    this.log('Time API failed:', apiUrl, error);
+                    continue;
+                }
+            }
+
+            return null;
         }
-        
-        // Hide existing channel content
-        this.shortsBlocker.blockChannelPages();
-        
-        // Load and display channel videos
-        this.displayChannelVideos(channelId, channelName);
-    }
 
-    getCurrentVideoTitle() {
-        const selectors = [
-            'h1.ytd-watch-metadata yt-formatted-string',
-            'h1.ytd-video-primary-info-renderer',
-            'h1 .ytd-video-primary-info-renderer',
-            '.ytd-watch-metadata h1',
-            '#title h1'
-        ];
-        
-        for (const selector of selectors) {
-            const element = document.querySelector(selector);
-            if (element && element.textContent) {
-                return element.textContent.trim();
+        fallbackDateAdvancement() {
+            // Fallback to system time if APIs fail
+            this.log('Using fallback system time advancement');
+
+            const today = new Date();
+            const lastAdvancedStr = this.settings.lastAdvancedDate;
+            const lastAdvanced = lastAdvancedStr ? new Date(lastAdvancedStr) : new Date('2000-01-01');
+
+            const todayNormalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const lastAdvancedNormalized = new Date(lastAdvanced.getFullYear(), lastAdvanced.getMonth(), lastAdvanced.getDate());
+
+            const daysDifference = Math.floor((todayNormalized - lastAdvancedNormalized) / (1000 * 60 * 60 * 24));
+
+            if (daysDifference > 0) {
+                const currentTimeMachineDate = new Date(this.settings.date);
+                currentTimeMachineDate.setDate(currentTimeMachineDate.getDate() + daysDifference);
+
+                const newTargetDate = currentTimeMachineDate.toISOString().split('T')[0];
+
+                this.settings.date = newTargetDate;
+                this.settings.lastAdvancedDate = todayNormalized.toDateString();
+
+                GM_setValue('ytTimeMachineDate', newTargetDate);
+                GM_setValue('ytLastAdvancedDate', todayNormalized.toDateString());
+
+                this.maxDate = new Date(newTargetDate);
+                this.dateModifier.setMaxDate(newTargetDate);
+                this.searchInterceptor.setMaxDate(this.maxDate);
+
+                this.apiManager.clearCache();
+                this.videoCache.clear();
+                this.homepageLoadedCount = 0;
+
+                this.log('Fallback advancement complete:', newTargetDate);
             }
         }
-        
-        return null;
-    }
 
-    getCurrentChannelId() {
-        const channelLink = document.querySelector('a.yt-simple-endpoint[href*="/channel/"]');
-        if (channelLink) {
-            const match = channelLink.href.match(/\/channel\/([^/?]+)/);
-            return match ? match[1] : null;
+        generateViewCount(publishedAt, referenceDate) {
+            const videoDate = new Date(publishedAt);
+            const refDate = new Date(referenceDate);
+            const daysSinceUpload = Math.floor((refDate - videoDate) / (1000 * 60 * 60 * 24));
+
+            let minViews, maxViews;
+
+            if (daysSinceUpload <= 1) {
+                minViews = 100;
+                maxViews = 50000;
+            } else if (daysSinceUpload <= 7) {
+                minViews = 1000;
+                maxViews = 500000;
+            } else if (daysSinceUpload <= 30) {
+                minViews = 5000;
+                maxViews = 2000000;
+            } else if (daysSinceUpload <= 365) {
+                minViews = 10000;
+                maxViews = 10000000;
+            } else {
+                minViews = 50000;
+                maxViews = 50000000;
+            }
+
+            const multiplier = Math.random() * 0.8 + 0.2;
+            const viewCount = Math.floor(minViews + (maxViews - minViews) * multiplier);
+
+            return this.formatViewCount(viewCount);
         }
-        return null;
-    }
 
-    getCurrentChannelName() {
-        const selectors = [
-            '#owner-name a',
-            '.ytd-channel-name a',
-            '#channel-name .ytd-channel-name',
-            '.ytd-video-owner-renderer a'
-        ];
-        
-        for (const selector of selectors) {
-            const element = document.querySelector(selector);
-            if (element && element.textContent) {
-                return element.textContent.trim();
+        formatViewCount(count) {
+            if (count >= 1000000) {
+                return (count / 1000000).toFixed(1) + 'M';
+            } else if (count >= 1000) {
+                return (count / 1000).toFixed(1) + 'K';
+            }
+            return count.toString();
+        }
+
+        init() {
+            this.log('YouTube Time Machine initializing...');
+
+            // Immediately nuke homepage if we're on it
+            if (this.isHomePage()) {
+                this.shortsBlocker.nukeHomepage();
+            }
+
+            this.addStyles();
+            this.setupUI();
+
+            if (this.settings.active) {
+                this.startFiltering();
+                this.searchInterceptor.setupSearchInterception();
+                this.startHomepageReplacement();
+                this.startVideoPageEnhancement();
+                this.setupAutoRefresh();
+            }
+
+            this.log('YouTube Time Machine ready!');
+        }
+
+        addStyles() {
+            const shortsCSS = this.shortsBlocker.getShortsBlockingCSS();
+            const uiCSS = this.uiManager.getStyles();
+            GM_addStyle(shortsCSS + uiCSS);
+        }
+
+        setupUI() {
+            const ui = document.createElement('div');
+            ui.id = 'timeMachineUI';
+            if (!this.settings.uiVisible) {
+                ui.classList.add('hidden');
+            }
+
+            ui.innerHTML = this.uiManager.getUIHTML();
+
+            const toggle = document.createElement('button');
+            toggle.id = 'timeMachineToggle';
+            toggle.innerHTML = '🕰️';
+            toggle.title = 'Show Time Machine';
+            if (this.settings.uiVisible) {
+                toggle.classList.remove('visible');
+            } else {
+                toggle.classList.add('visible');
+            }
+
+            const addToPage = () => {
+                if (document.body) {
+                    document.body.appendChild(ui);
+                    document.body.appendChild(toggle);
+                    this.attachEventListeners();
+                } else {
+                    setTimeout(addToPage, 100);
+                }
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', addToPage);
+            } else {
+                addToPage();
             }
         }
-        
-        return null;
-    }
 
-    async waitForElement(selector, timeout = 5000) {
-        return new Promise((resolve) => {
-            const element = document.querySelector(selector);
-            if (element) {
-                resolve(element);
-                return;
-            }
-            
-            const observer = new MutationObserver(() => {
-                const element = document.querySelector(selector);
-                if (element) {
-                    observer.disconnect();
-                    resolve(element);
+        attachEventListeners() {
+            window.timeMachine = this;
+
+            document.getElementById('tmHideBtn').addEventListener('click', () => {
+                this.toggleUI();
+            });
+
+            document.getElementById('timeMachineToggle').addEventListener('click', () => {
+                this.toggleUI();
+            });
+
+            document.getElementById('tmSetDate').addEventListener('click', () => {
+                const newDate = document.getElementById('tmDateInput').value;
+                if (newDate) {
+                    this.settings.date = newDate;
+                    this.maxDate = new Date(newDate);
+                    this.dateModifier.setMaxDate(newDate);
+                    this.searchInterceptor.setMaxDate(newDate);
+                    GM_setValue('ytTimeMachineDate', newDate);
+                    this.apiManager.clearCache();
+                    this.homepageLoadedCount = 0;
+                    this.updateUI();
+                    this.log('Date updated to:', newDate);
                 }
             });
-            
+
+            document.getElementById('tmAddApi').addEventListener('click', () => {
+                const key = document.getElementById('tmApiInput').value.trim();
+                if (this.apiManager.addKey(key)) {
+                    document.getElementById('tmApiInput').value = '';
+                    this.updateUI();
+                }
+            });
+
+            document.getElementById('tmTestAll').addEventListener('click', () => {
+                const btn = document.getElementById('tmTestAll');
+                btn.disabled = true;
+                btn.textContent = 'Testing...';
+
+                this.apiManager.testAllKeys().then(results => {
+                    alert(results.join('\n'));
+                }).finally(() => {
+                    btn.disabled = false;
+                    btn.textContent = 'Test All Keys';
+                });
+            });
+
+            document.getElementById('tmAddSub').addEventListener('click', () => {
+                const name = document.getElementById('tmSubInput').value.trim();
+                if (this.subscriptionManager.addSubscription(name)) {
+                    document.getElementById('tmSubInput').value = '';
+                    this.updateUI();
+                }
+            });
+
+            document.getElementById('tmLoadVideos').addEventListener('click', () => {
+                const btn = document.getElementById('tmLoadVideos');
+                btn.disabled = true;
+                btn.textContent = 'Loading...';
+
+                this.loadVideosFromSubscriptions().then(() => {
+                    btn.textContent = 'Videos Loaded!';
+                }).catch(error => {
+                    btn.textContent = 'Load Failed';
+                    this.log('Failed to load videos:', error);
+                }).finally(() => {
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        btn.textContent = 'Load Videos';
+                    }, 2000);
+                });
+            });
+
+            document.getElementById('tmToggle').addEventListener('click', () => {
+                this.settings.active = !this.settings.active;
+                GM_setValue('ytTimeMachineActive', this.settings.active);
+                location.reload();
+            });
+
+            document.getElementById('tmClearCache').addEventListener('click', () => {
+                this.apiManager.clearCache();
+                this.videoCache.clear();
+                this.homepageLoadedCount = 0;
+                this.updateUI();
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+                    e.preventDefault();
+                    this.toggleUI();
+                }
+            });
+
+            const refreshBtn = document.getElementById('tmRefreshVideosBtn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', () => {
+                    refreshBtn.disabled = true;
+                    refreshBtn.textContent = 'Refreshing...';
+
+                    this.loadVideosFromSubscriptions().then(() => {
+                        const container = document.querySelector('ytd-browse[page-subtype="home"] ytd-rich-grid-renderer');
+                        if (container) {
+                            this.replaceHomepage(container);
+                        }
+                        refreshBtn.textContent = 'Refreshed!';
+                    }).catch(error => {
+                        refreshBtn.textContent = 'Refresh Failed';
+                        this.log('Manual refresh failed:', error);
+                    }).finally(() => {
+                        setTimeout(() => {
+                            refreshBtn.disabled = false;
+                            refreshBtn.textContent = 'Refresh Videos';
+                        }, 2000);
+                    });
+                });
+            }
+        }
+
+        toggleUI() {
+            this.settings.uiVisible = !this.settings.uiVisible;
+            GM_setValue('ytTimeMachineUIVisible', this.settings.uiVisible);
+
+            const ui = document.getElementById('timeMachineUI');
+            const toggle = document.getElementById('timeMachineToggle');
+
+            if (this.settings.uiVisible) {
+                ui.classList.remove('hidden');
+                toggle.classList.remove('visible');
+            } else {
+                ui.classList.add('hidden');
+                toggle.classList.add('visible');
+            }
+        }
+
+        updateUI() {
+            const ui = document.getElementById('timeMachineUI');
+            if (ui) {
+                ui.innerHTML = this.uiManager.getUIHTML();
+                this.attachEventListeners();
+            }
+        }
+
+        removeApiKey(index) {
+            if (this.apiManager.removeKey(this.apiManager.keys[index])) {
+                this.updateUI();
+            }
+        }
+
+        removeSubscription(index) {
+            if (this.subscriptionManager.removeSubscription(index)) {
+                this.updateUI();
+            }
+        }
+
+        async loadVideosFromSubscriptions(isRefresh = false) {
+            const subscriptions = this.subscriptionManager.getSubscriptions();
+
+            if (subscriptions.length === 0) {
+                throw new Error('No subscriptions to load from');
+            }
+
+            this.log('Loading videos from subscriptions' + (isRefresh ? ' (refresh mode)' : '') + '...');
+
+            // Get existing videos for refresh mixing
+            const existingVideos = this.videoCache.get('subscription_videos') || [];
+
+            const allVideos = [];
+            const endDate = new Date(this.maxDate);
+            endDate.setHours(23, 59, 59, 999);
+
+            // Load viral videos alongside subscription videos
+            const viralVideos = await this.apiManager.getViralVideos(endDate, isRefresh);
+            this.log('Loaded ' + viralVideos.length + ' viral videos');
+
+            for (let i = 0; i < subscriptions.length; i += CONFIG.batchSize) {
+                const batch = subscriptions.slice(i, i + CONFIG.batchSize);
+
+                const batchPromises = batch.map(async (sub) => {
+                    try {
+                        let channelId = sub.id;
+                        if (!channelId) {
+                            channelId = await this.getChannelIdByName(sub.name);
+                        }
+
+                        if (channelId) {
+                            const videos = await this.getChannelVideos(channelId, sub.name, endDate, isRefresh);
+                            return videos;
+                        }
+                        return [];
+                    } catch (error) {
+                        this.log('Failed to load videos for ' + sub.name + ':', error);
+                        return [];
+                    }
+                });
+
+                const batchResults = await Promise.all(batchPromises);
+                batchResults.forEach(videos => allVideos.push.apply(allVideos, videos));
+
+                if (i + CONFIG.batchSize < subscriptions.length) {
+                    await new Promise(resolve => setTimeout(resolve, CONFIG.apiCooldown));
+                }
+            }
+
+            // Mix with existing videos if this is a refresh
+            let finalVideos = allVideos;
+            if (isRefresh && existingVideos.length > 0) {
+                const existingViralVideos = this.videoCache.get('viral_videos') || [];
+                finalVideos = this.mixVideosForRefresh(allVideos, existingVideos, viralVideos, existingViralVideos);
+                this.log('Mixed ' + allVideos.length + ' new videos with ' + existingVideos.length + ' existing videos + ' + viralVideos.length + ' viral videos');
+            } else {
+                // For initial load, just add viral videos to the mix
+                finalVideos = allVideos.concat(viralVideos);
+            }
+
+            // Store viral videos separately for mixing
+            this.videoCache.set('viral_videos', viralVideos);
+            this.videoCache.set('subscription_videos', finalVideos);
+            this.log('Loaded ' + finalVideos.length + ' total videos from subscriptions');
+
+            return finalVideos;
+        }
+
+        mixVideosForRefresh(newVideos, existingVideos, newViralVideos = [], existingViralVideos = []) {
+            // Calculate how many videos to keep from each set
+            const totalDesired = Math.max(CONFIG.maxHomepageVideos, existingVideos.length);
+            const viralVideoCount = Math.floor(totalDesired * CONFIG.viralVideoPercentage);
+            const remainingSlots = totalDesired - viralVideoCount;
+            const newVideoCount = Math.floor(remainingSlots * CONFIG.refreshVideoPercentage);
+            const existingVideoCount = remainingSlots - newVideoCount;
+
+            this.log('Mixing videos: ' + newVideoCount + ' new + ' + existingVideoCount + ' existing + ' + viralVideoCount + ' viral = ' + totalDesired + ' total');
+
+            // Shuffle and select videos
+            const selectedNew = this.shuffleArray(newVideos).slice(0, newVideoCount);
+            const selectedExisting = this.shuffleArray(existingVideos).slice(0, existingVideoCount);
+
+            // Mix viral videos (prefer new viral over existing)
+            const allViralVideos = newViralVideos.concat(existingViralVideos);
+            const selectedViral = this.shuffleArray(allViralVideos).slice(0, viralVideoCount);
+
+            // Combine and shuffle the final mix
+            const mixedVideos = selectedNew.concat(selectedExisting).concat(selectedViral);
+            return this.shuffleArray(mixedVideos);
+        }
+
+        async getChannelIdByName(channelName) {
+            const cacheKey = 'channel_id_' + channelName;
+            let channelId = this.apiManager.getCache(cacheKey);
+
+            if (!channelId) {
+                try {
+                    const response = await this.apiManager.makeRequest(this.apiManager.baseUrl + '/search', {
+                        part: 'snippet',
+                        q: channelName,
+                        type: 'channel',
+                        maxResults: 1
+                    });
+
+                    if (response.items && response.items.length > 0) {
+                        channelId = response.items[0].snippet.channelId;
+                        this.apiManager.setCache(cacheKey, channelId);
+                        this.stats.apiCalls++;
+                    }
+                } catch (error) {
+                    this.log('Failed to find channel ID for ' + channelName + ':', error);
+                }
+            } else {
+                this.stats.cacheHits++;
+            }
+
+            return channelId;
+        }
+
+        async getChannelVideos(channelId, channelName, endDate, forceRefresh = false) {
+            const cacheKey = 'channel_videos_' + channelId + '_' + this.settings.date;
+            let videos = this.apiManager.getCache(cacheKey, forceRefresh);
+
+            if (!videos) {
+                try {
+                    const response = await this.apiManager.makeRequest(this.apiManager.baseUrl + '/search', {
+                        part: 'snippet',
+                        channelId: channelId,
+                        type: 'video',
+                        order: 'date',
+                        publishedBefore: endDate.toISOString(),
+                        maxResults: CONFIG.videosPerChannel
+                    });
+
+                    videos = response.items ? response.items.map(item => ({
+                        id: item.id.videoId,
+                        title: item.snippet.title,
+                        channel: item.snippet.channelTitle || channelName,
+                        channelId: item.snippet.channelId,
+                        thumbnail: item.snippet.thumbnails && item.snippet.thumbnails.medium ? item.snippet.thumbnails.medium.url : (item.snippet.thumbnails && item.snippet.thumbnails.default ? item.snippet.thumbnails.default.url : ''),
+                        publishedAt: item.snippet.publishedAt,
+                        description: item.snippet.description || '',
+                        viewCount: this.generateViewCount(item.snippet.publishedAt, endDate),
+                        relativeDate: this.dateModifier.formatRelativeDate(item.snippet.publishedAt, endDate)
+                    })) : [];
+
+                    this.apiManager.setCache(cacheKey, videos, forceRefresh);
+                    this.stats.apiCalls++;
+                } catch (error) {
+                    this.log('Failed to get videos for channel ' + channelName + ':', error);
+                    videos = [];
+                }
+            } else {
+                this.stats.cacheHits++;
+            }
+
+            return videos;
+        }
+
+        startFiltering() {
+            this.log('Starting ultra-aggressive video filtering...');
+
+            const filterVideos = () => {
+                if (this.isProcessing) return;
+                this.isProcessing = true;
+
+                const videoSelectors = [
+                    'ytd-video-renderer',
+                    'ytd-grid-video-renderer',
+                    'ytd-rich-item-renderer',
+                    'ytd-compact-video-renderer',
+                    'ytd-movie-renderer',
+                    'ytd-playlist-renderer',
+                    'ytd-channel-renderer',
+                    'ytd-shelf-renderer',
+                    'ytd-rich-shelf-renderer',
+                    'ytd-horizontal-card-list-renderer',
+                    'ytd-compact-movie-renderer',
+                    'ytd-compact-playlist-renderer',
+                    'ytd-compact-station-renderer',
+                    'ytd-compact-radio-renderer'
+                ];
+
+                this.cleanupWatchNext();
+                this.shortsBlocker.blockShorts();
+                this.dateModifier.updateDates();
+
+                let processed = 0;
+                let filtered = 0;
+
+                videoSelectors.forEach(selector => {
+                    const videos = document.querySelectorAll(selector);
+                    videos.forEach(video => {
+                        if (video.dataset.tmProcessed) return;
+
+                        video.dataset.tmProcessed = 'true';
+                        processed++;
+
+                        if (this.shouldHideVideo(video)) {
+                            video.classList.add('yt-time-machine-hidden');
+                            filtered++;
+                        } else {
+                            video.classList.add('tm-approved');
+                            video.classList.remove('yt-time-machine-hidden');
+                        }
+                    });
+                });
+
+                if (processed > 0) {
+                    this.stats.processed += processed;
+                    this.stats.filtered += filtered;
+                    this.log('Processed ' + processed + ', filtered ' + filtered);
+                }
+
+                this.isProcessing = false;
+            };
+
+            filterVideos();
+
+            setInterval(filterVideos, CONFIG.updateInterval);
+
+            const observer = new MutationObserver(() => {
+                setTimeout(filterVideos, 10);
+            });
+
             observer.observe(document.body, {
                 childList: true,
                 subtree: true
             });
-            
-            setTimeout(() => {
-                observer.disconnect();
-                resolve(null);
-            }, timeout);
-        });
-    }
-
-    displayWatchPageRecommendations(videos) {
-        if (!videos || videos.length === 0) {
-            this.log('No recommendations to display');
-            return;
         }
-        
-        // Remove existing Time Machine recommendations
-        const existingSection = document.querySelector('.tm-video-page-section');
-        if (existingSection) {
-            existingSection.remove();
-        }
-        
-        // Find the secondary column
-        const secondary = document.querySelector('#secondary');
-        if (!secondary) {
-            this.log('Could not find secondary column');
-            return;
-        }
-        
-        // Create recommendations section
-        const section = document.createElement('div');
-        section.className = 'tm-video-page-section';
-        section.innerHTML = `
-            <div class="tm-video-page-title">Time Machine Recommendations</div>
-            <div class="tm-video-page-grid">
-                ${videos.map(video => `
-                    <div class="tm-video-page-card" onclick="window.location.href='/watch?v=${video.id}'">
-                        <img class="tm-video-page-thumbnail" src="${video.thumbnail}" alt="${video.title}">
-                        <div class="tm-video-page-info">
-                            <div class="tm-video-page-video-title">${video.title}</div>
-                            <div class="tm-video-page-channel">${video.channel}</div>
-                            <div class="tm-video-page-meta">
-                                <span>${video.viewCount} views</span>
-                                <span>${video.relativeDate}</span>
-                            </div>
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-        
-        // Insert at the top of secondary column
-        secondary.insertBefore(section, secondary.firstChild);
-        
-        this.log('Displayed', videos.length, 'watch page recommendations');
-    }
 
-    displayChannelVideos(channelId, channelName) {
-        this.log('Displaying channel videos for:', channelName);
-        // Implementation would go here
-    }
+        cleanupWatchNext() {
+            // Don't aggressively hide watch next content - let our enhancement handle it
+            const autoplayRenderer = document.querySelector('ytd-compact-autoplay-renderer');
+            if (autoplayRenderer && !autoplayRenderer.dataset.tmHidden) {
+                autoplayRenderer.dataset.tmHidden = 'true';
+                autoplayRenderer.style.display = 'none';
+            }
+        }
 
-    getAllCachedVideos() {
-        // Collect all cached videos from various sources
-        const allVideos = [];
-        
-        // Get videos from cache
-        const cacheKeys = GM_listValues();
-        cacheKeys.forEach(key => {
-            if (key.startsWith('cache_channel_videos_') || key.startsWith('cache_viral_videos_')) {
-                try {
-                    const cached = GM_getValue(key);
-                    const data = JSON.parse(cached);
-                    if (data.value && Array.isArray(data.value)) {
-                        allVideos.push(...data.value);
+        shouldHideVideo(videoElement) {
+            if (this.shortsBlocker.isShorts(videoElement)) {
+                return true;
+            }
+
+            const videoDate = this.extractVideoDate(videoElement);
+            if (videoDate && videoDate > this.maxDate) {
+                return true;
+            }
+
+            return false;
+        }
+
+        extractVideoDate(videoElement) {
+            const dateSelectors = [
+                '#metadata-line span:last-child',
+                '.ytd-video-meta-block span:last-child',
+                '#published-time-text',
+                '[aria-label*="ago"]'
+            ];
+
+            for (const selector of dateSelectors) {
+                const element = videoElement.querySelector(selector);
+                if (element) {
+                    const dateText = element.textContent && element.textContent.trim();
+                    if (dateText) {
+                        return this.dateModifier.parseRelativeDate(dateText);
                     }
-                } catch (e) {
-                    // Ignore invalid cache entries
                 }
             }
-        });
-        
-        return allVideos;
-    }
 
-    // UI Methods
-    toggleUI() {
-        const ui = document.getElementById('timeMachineUI');
-        const toggle = document.getElementById('timeMachineToggle');
-        
-        if (ui.classList.contains('hidden')) {
-            ui.classList.remove('hidden');
-            toggle.classList.remove('visible');
-        } else {
-            ui.classList.add('hidden');
-            toggle.classList.add('visible');
+            return null;
         }
-    }
 
-    updateUI() {
-        const ui = document.getElementById('timeMachineUI');
-        if (ui) {
-            ui.innerHTML = this.uiManager.getUIHTML();
+        startHomepageReplacement() {
+            const replaceHomepage = () => {
+                if (this.isHomePage()) {
+                    const container = document.querySelector('ytd-browse[page-subtype="home"] ytd-rich-grid-renderer');
+                    if (container && !container.dataset.tmReplaced) {
+                        container.dataset.tmReplaced = 'true';
+                        this.replaceHomepage(container);
+                    }
+                }
+            };
+
+            setInterval(replaceHomepage, 1000);
         }
-    }
 
-    setDate() {
-        const input = document.getElementById('tmDateInput');
-        if (input && input.value) {
-            this.settings.date = input.value;
-            this.maxDate = new Date(input.value);
-            this.dateModifier.setMaxDate(this.maxDate);
-            this.searchInterceptor.setMaxDate(this.maxDate);
-            GM_setValue('ytTimeMachineDate', this.settings.date);
-            this.updateUI();
-            this.log('Date set to:', this.settings.date);
+        isHomePage() {
+            return location.pathname === '/' || location.pathname === '';
         }
-    }
 
-    addApiKey() {
-        const input = document.getElementById('tmApiInput');
-        if (input && input.value.trim()) {
-            if (this.apiManager.addKey(input.value.trim())) {
-                input.value = '';
-                this.updateUI();
+        async replaceHomepage(container, isRefresh = false) {
+            this.log('Replacing homepage' + (isRefresh ? ' (refresh)' : '') + '...');
+
+            container.innerHTML = '<div class="tm-homepage">' +
+                '<div class="tm-loading">' +
+                '<div class="tm-spinner"></div>' +
+                '<div>' + (isRefresh ? 'Refreshing' : 'Loading') + ' your time capsule from ' + this.maxDate.toLocaleDateString() + '...</div>' +
+                '</div>' +
+                '</div>';
+
+            try {
+                let videos = this.videoCache.get('subscription_videos');
+                if (!videos || videos.length === 0) {
+                    videos = await this.loadVideosFromSubscriptions(isRefresh);
+                }
+
+                if (videos.length > 0) {
+                    const homepageHTML = this.createHomepageHTML(videos, isRefresh);
+                    container.innerHTML = homepageHTML;
+                    this.attachVideoClickHandlers();
+                    this.attachLoadMoreHandler();
+                } else {
+                    container.innerHTML = '<div class="tm-homepage">' +
+                        '<div class="tm-loading">' +
+                        '<div>No videos found from ' + this.maxDate.toLocaleDateString() + '</div>' +
+                        '</div>' +
+                        '</div>';
+                }
+            } catch (error) {
+                this.log('Homepage replacement failed:', error);
+                container.innerHTML = '<div class="tm-homepage">' +
+                    '<div class="tm-loading">' +
+                    '<div>Failed to ' + (isRefresh ? 'refresh' : 'load') + ' time capsule</div>' +
+                    '<div style="margin-top: 10px; font-size: 12px; opacity: 0.7;">' +
+                    error.message +
+                    '</div>' +
+                    '</div>' +
+                    '</div>';
+            }
+        }
+
+        createHomepageHTML(videos, isRefresh = false) {
+            const targetDate = new Date(this.maxDate);
+
+            // Separate viral videos from regular videos
+            const viralVideos = videos.filter(video => video.isViral);
+            const regularVideos = videos.filter(video => !video.isViral);
+
+            // Filter by date
+            const validViralVideos = viralVideos.filter(video => new Date(video.publishedAt) <= this.maxDate);
+            const validRegularVideos = regularVideos.filter(video => new Date(video.publishedAt) <= this.maxDate);
+
+            // Combine and shuffle for final display
+            const finalVideos = this.shuffleArray(validRegularVideos.concat(validViralVideos));
+
+            const videoCards = finalVideos.map(video =>
+                '<div class="tm-video-card' + (video.isViral ? ' tm-viral-video' : '') + '" data-video-id="' + video.id + '">' +
+                '<img class="tm-video-thumbnail" src="' + video.thumbnail + '" alt="' + video.title + '" loading="lazy">' +
+                '<div class="tm-video-info">' +
+                '<div class="tm-video-title">' + video.title + '</div>' +
+                '<div class="tm-video-channel">' + video.channel + '</div>' +
+                '<div class="tm-video-meta">' +
+                '<span class="tm-video-views">' + video.viewCount + ' views</span>' +
+                '<span class="tm-video-date">' + video.relativeDate + '</span>' +
+                '</div>' +
+                '</div>' +
+                '</div>'
+            ).join('');
+
+            const viralCount = validViralVideos.length;
+            const regularCount = validRegularVideos.length;
+            const refreshIndicator = isRefresh ? ' (refreshed with ' + (CONFIG.refreshVideoPercentage * 100) + '% new content + ' + (CONFIG.viralVideoPercentage * 100) + '% viral)' : '';
+
+            return '<div class="tm-homepage">' +
+                '<div style="font-size: 14px; color: var(--yt-spec-text-secondary); margin-bottom: 20px;">' +
+                regularCount + ' subscription videos + ' + viralCount + ' viral videos' + refreshIndicator +
+                '</div>' +
+                '<div class="tm-video-grid">' +
+                videoCards +
+                '</div>' +
+                '<div style="text-align: center; margin-top: 30px;">' +
+                '<button id="tmLoadMoreBtn" class="tm-load-more-btn">Load more videos</button>' +
+                '</div>' +
+                '</div>';
+        }
+
+        shuffleArray(array) {
+            const shuffled = array.slice();
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const temp = shuffled[i];
+                shuffled[i] = shuffled[j];
+                shuffled[j] = temp;
+            }
+            return shuffled;
+        }
+
+        attachVideoClickHandlers() {
+            document.querySelectorAll('.tm-video-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const videoId = card.dataset.videoId;
+                    if (videoId) {
+                        window.location.href = '/watch?v=' + videoId;
+                    }
+                });
+            });
+        }
+
+        attachLoadMoreHandler() {
+            const loadMoreBtn = document.getElementById('tmLoadMoreBtn');
+            if (loadMoreBtn) {
+                loadMoreBtn.addEventListener('click', () => {
+                    this.homepageLoadedCount += CONFIG.homepageLoadMoreSize;
+
+                    const container = document.querySelector('ytd-browse[page-subtype="home"] ytd-rich-grid-renderer');
+                    if (container) {
+                        const videos = this.videoCache.get('subscription_videos');
+                        if (videos) {
+                            const homepageHTML = this.createHomepageHTML(videos);
+                            container.innerHTML = homepageHTML;
+                            this.attachVideoClickHandlers();
+                            this.attachLoadMoreHandler();
+                        }
+                    }
+                });
+            }
+        }
+
+        startVideoPageEnhancement() {
+            const enhanceVideoPage = () => {
+                if (this.isVideoPage()) {
+                    const sidebar = document.querySelector('#secondary');
+                    if (sidebar && !sidebar.dataset.tmEnhanced) {
+                        sidebar.dataset.tmEnhanced = 'true';
+                        this.enhanceVideoPage(sidebar);
+                    }
+                }
+            };
+
+            setInterval(enhanceVideoPage, 2000);
+        }
+
+        isVideoPage() {
+            return location.pathname === '/watch';
+        }
+
+        async enhanceVideoPage(sidebar) {
+            this.log('Enhancing video page...');
+
+            // Only hide specific YouTube elements, not all content
+            const elementsToHide = [
+                'ytd-watch-next-secondary-results-renderer',
+                'ytd-compact-autoplay-renderer'
+            ];
+
+            elementsToHide.forEach(selector => {
+                const elements = sidebar.querySelectorAll(selector);
+                elements.forEach(el => {
+                    if (el && typeof el === 'object' && el.style) {
+                        el.style.display = 'none';
+                    }
+                });
+            });
+
+            const currentChannelId = this.getCurrentChannelId();
+            const currentVideoTitle = this.getCurrentVideoTitle();
+            const currentChannelName = this.getCurrentChannelName();
+
+            this.log('Current video context:', {
+                channelId: currentChannelId,
+                channelName: currentChannelName,
+                videoTitle: currentVideoTitle
+            });
+
+            try {
+                let videos = this.videoCache.get('subscription_videos');
+                if (!videos || videos.length === 0) {
+                    this.log('Loading subscription videos for watch next...');
+                    videos = await this.loadVideosFromSubscriptions();
+                }
+
+                // Get more videos from current channel if we have channel ID
+                let freshVideos = [];
+                if (currentChannelId) {
+                    try {
+                        const endDate = new Date(this.maxDate);
+                        endDate.setHours(23, 59, 59, 999);
+
+                        const startDate = new Date(endDate);
+                        startDate.setMonth(startDate.getMonth() - 3); // 3 months back for stability
+
+                        freshVideos = await this.apiManager.getChannelVideosForPage(currentChannelId, currentChannelName, endDate, startDate);
+                        this.log('Loaded ' + freshVideos.length + ' fresh videos from current channel');
+                    } catch (error) {
+                        this.log('Failed to load fresh videos:', error);
+                    }
+                }
+
+                // Get series matching videos
+                let seriesVideos = [];
+                if (currentVideoTitle && currentChannelName) {
+                    try {
+                        const enhancedQuery = this.createNextEpisodeQuery(currentVideoTitle, currentChannelName);
+                        console.log('[TimeMachine] Enhanced series search query:', enhancedQuery);
+                        seriesVideos = await this.apiManager.searchVideos(enhancedQuery, 10, this.maxDate);
+                        this.log('Loaded ' + seriesVideos.length + ' series matching videos');
+                    } catch (error) {
+                        this.log('Failed to load series videos:', error);
+                    }
+                }
+
+                if (videos.length > 0) {
+                    const recommendations = await this.recommendationEngine.generateEnhancedRecommendations(
+                        currentChannelId,
+                        currentVideoTitle,
+                        videos,
+                        this.maxDate,
+                        freshVideos,
+                        seriesVideos
+                    );
+
+                    this.log('Generated ' + recommendations.length + ' total recommendations');
+                    this.createWatchNextSection(sidebar, recommendations);
+                } else {
+                    this.log('No videos available for recommendations');
+                    // Create empty watch next section
+                    this.createWatchNextSection(sidebar, []);
+                }
+            } catch (error) {
+                this.log('Video page enhancement failed:', error);
+                // Create fallback watch next section
+                this.createWatchNextSection(sidebar, []);
+            }
+        }
+
+        getCurrentChannelName() {
+            const channelElement = document.querySelector('ytd-video-owner-renderer #channel-name a, #owner-name a');
+            return channelElement ? channelElement.textContent.trim() : '';
+        }
+
+        getCurrentVideoTitle() {
+            const titleElement = document.querySelector('h1.ytd-video-primary-info-renderer, h1.ytd-watch-metadata');
+            return titleElement ? titleElement.textContent.trim() : '';
+        }
+
+        getCurrentChannelId() {
+            const channelLink = document.querySelector('ytd-video-owner-renderer a, #owner-name a');
+            if (channelLink) {
+                const href = channelLink.getAttribute('href');
+                if (href) {
+                    const match = href.match(/\/(channel|c|user)\/([^\/]+)/);
+                    if (match) {
+                        return match[2];
+                    }
+                }
+            }
+            return null;
+        }
+
+        createWatchNextSection(secondary, recommendations) {
+            // Remove any existing time machine sections first
+            const existingSections = secondary.querySelectorAll('.tm-video-page-section');
+            existingSections.forEach(section => {
+                if (section && section.parentNode) {
+                    section.parentNode.removeChild(section);
+                }
+            });
+
+            const videoPageHTML = this.createVideoPageHTML(recommendations);
+            const tmSection = document.createElement('div');
+            tmSection.innerHTML = videoPageHTML;
+
+            // Insert at the top of secondary content
+            if (secondary.firstChild) {
+                secondary.insertBefore(tmSection, secondary.firstChild);
             } else {
-                alert('Invalid or duplicate API key');
+                secondary.appendChild(tmSection);
+            }
+
+            this.attachVideoPageClickHandlers();
+        }
+
+        createNextEpisodeQuery(videoTitle, channelName) {
+            // Create a query that looks for the next episode by incrementing numbers
+            let enhancedTitle = videoTitle;
+
+            // Find numbers in the title and increment them
+            enhancedTitle = enhancedTitle.replace(/(d+)/g, (match, number) => {
+                const nextNumber = parseInt(number) + 1;
+                console.log('[TimeMachine] Incrementing episode number: ' + number + ' -> ' + nextNumber);
+                return nextNumber.toString();
+            });
+
+            // Also search for the original title to get related videos
+            const queries = [
+                enhancedTitle + ' ' + channelName,  // Next episode search
+                videoTitle + ' ' + channelName       // Original series search
+            ];
+
+            // Return the enhanced query (we'll use the first one for now)
+            return queries[0];
+        }
+
+        createVideoPageHTML(videos) {
+            if (!videos || videos.length === 0) {
+                return '<div class="tm-video-page-section">' +
+                    '<h3 class="tm-video-page-title">Watch next</h3>' +
+                    '<div class="tm-loading">' +
+                    '<div>Loading recommendations from ' + this.maxDate.toLocaleDateString() + '...</div>' +
+                    '</div>' +
+                    '</div>';
+            }
+
+            const videoCards = videos.slice(0, Math.min(CONFIG.watchNextVideosCount, videos.length)).map(video =>
+                '<div class="tm-video-page-card" data-video-id="' + video.id + '">' +
+                '<img class="tm-video-page-thumbnail" src="' + video.thumbnail + '" alt="' + video.title + '" loading="lazy">' +
+                '<div class="tm-video-page-info">' +
+                '<div class="tm-video-page-video-title">' + video.title + '</div>' +
+                '<div class="tm-video-page-channel">' + video.channel + '</div>' +
+                '<div class="tm-video-page-meta">' +
+                '<span class="tm-video-views">' + video.viewCount + ' views</span>' +
+                '<span>•</span>' +
+                '<span class="tm-video-date">' + video.relativeDate + '</span>' +
+                '</div>' +
+                '</div>' +
+                '</div>'
+            ).join('');
+
+            return '<div class="tm-video-page-section">' +
+                '<h3 class="tm-video-page-title">Watch next</h3>' +
+                '<div class="tm-video-page-grid">' +
+                videoCards +
+                '</div>' +
+                '</div>';
+        }
+
+        attachVideoPageClickHandlers() {
+            document.querySelectorAll('.tm-video-page-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const videoId = card.dataset.videoId;
+                    if (videoId) {
+                        window.location.href = '/watch?v=' + videoId;
+                    }
+                });
+            });
+        }
+
+        log() {
+            if (CONFIG.debugMode) {
+                console.log.apply(console, ['[Time Machine]'].concat(Array.prototype.slice.call(arguments)));
             }
         }
     }
 
-    addSubscription() {
-        const input = document.getElementById('tmSubInput');
-        if (input && input.value.trim()) {
-            if (this.subscriptionManager.addSubscription(input.value.trim())) {
-                input.value = '';
-                this.updateUI();
-            } else {
-                alert('Subscription already exists');
-            }
-        }
-    }
-
-    removeSubscription(index) {
-        if (this.subscriptionManager.removeSubscription(index)) {
-            this.updateUI();
-        }
-    }
-
-    toggleActive() {
-        this.settings.active = !this.settings.active;
-        GM_setValue('ytTimeMachineActive', this.settings.active);
-        this.updateUI();
-        
-        if (this.settings.active) {
-            this.handlePageChange();
+    function init() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                new YouTubeTimeMachine();
+            });
         } else {
-            this.shortsBlocker.restoreBlockedContent();
-            this.dateModifier.restoreOriginalDates();
+            new YouTubeTimeMachine();
         }
     }
 
-    clearCache() {
-        this.apiManager.clearCache();
-        this.updateUI();
-        alert('Cache cleared');
-    }
-
-    async testAllKeys() {
-        const btn = document.getElementById('tmTestAll');
-        if (btn) {
-            btn.disabled = true;
-            btn.textContent = 'Testing...';
-        }
-        
-        try {
-            const results = await this.apiManager.testAllKeys();
-            alert('API Key Test Results:\n\n' + results.join('\n'));
-        } catch (error) {
-            alert('Test failed: ' + error.message);
-        }
-        
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Test All Keys';
-        }
-    }
-
-    async loadVideos() {
-        this.log('Loading videos...');
-        // Implementation would go here
-    }
-
-    async refreshVideos() {
-        this.log('Refreshing videos...');
-        // Implementation would go here
-    }
-
-    log() {
-        if (CONFIG.debugMode) {
-            console.log.apply(console, ['[YouTube Time Machine]'].concat(Array.prototype.slice.call(arguments)));
-        }
-    }
-}
-
-// ===== INITIALIZATION =====
-// Initialize the Time Machine
-let timeMachine;
-
-function initializeTimeMachine() {
-    if (timeMachine) return;
-    
-    timeMachine = new YouTubeTimeMachine();
-    window.timeMachine = timeMachine; // Make globally accessible
-    
-    // Initialize when DOM is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            timeMachine.init();
-        });
-    } else {
-        timeMachine.init();
-    }
-}
-
-// Start initialization
-initializeTimeMachine();
+    init();
 
 })();
