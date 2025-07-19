@@ -4196,6 +4196,9 @@ if (videos.length > 0) {
                         return match[2];
                     this.log('Failed to fetch fresh/series videos:', error);
                 }
+                } catch (e) {
+                    // Invalid cache entry
+                }
             }
             return null;
         }
